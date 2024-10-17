@@ -13,7 +13,11 @@ class Program
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int vKey);
     [DllImport("user32.dll")]
+    public static extern short GetKeyState(int vKey);
+    [DllImport("user32.dll")]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+    [DllImport("user32.dll")]
+    static extern bool SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
 
     // 键盘事件常量
@@ -30,10 +34,13 @@ class Program
     const byte VK_Danyinhao = 0xDE;   // "'"
     const byte VK_Juhao = 0xBE; // "."
     const byte VK_SHIFT = 0x10; // Shift 键
+    const byte VK_ALT = 0x12; // Alt 键
 
     const byte VK_SEMICOLON = 0xBA; // ";" 键的虚拟键
     const uint KEYEVENTF_KEYDOWN = 0x0000;
     const uint KEYEVENTF_KEYUP = 0x0002;
+
+    const int WM_CHAR = 0x0102;
 
 
     private static int sleepTime;
@@ -102,24 +109,45 @@ class Program
     {
         Dictionary<int, POINT> dictPts = new Dictionary<int, POINT>();
         int i = 1;
-        dictPts[i++] = new POINT { X = 17, Y = 1339 };
-        dictPts[i++] = new POINT { X = 28, Y = 1339 };
-        dictPts[i++] = new POINT { X = 38, Y = 1339 };
-        dictPts[i++] = new POINT { X = 49, Y = 1339 };
-        dictPts[i++] = new POINT { X = 61, Y = 1339 };
-        dictPts[i++] = new POINT { X = 74, Y = 1339 };
-        dictPts[i++] = new POINT { X = 83, Y = 1339 };
-        dictPts[i++] = new POINT { X = 96, Y = 1339 };
-        dictPts[i++] = new POINT { X = 107, Y = 1339 };
-        dictPts[i++] = new POINT { X = 117, Y = 1339 };
-        dictPts[i++] = new POINT { X = 129, Y = 1339 };
-        dictPts[i++] = new POINT { X = 140, Y = 1339 };
-        dictPts[i++] = new POINT { X = 152, Y = 1339 };
-        dictPts[i++] = new POINT { X = 164, Y = 1339 };
-        dictPts[i++] = new POINT { X = 175, Y = 1339 };
-        dictPts[i++] = new POINT { X = 185, Y = 1339 };
-        dictPts[i++] = new POINT { X = 196, Y = 1339 };
-        dictPts[i++] = new POINT { X = 208, Y = 1339 };
+        // home
+        dictPts[i++] = new POINT { X = 15, Y = 1350 };
+        dictPts[i++] = new POINT { X = 28, Y = 1350 };
+        dictPts[i++] = new POINT { X = 38, Y = 1350 };
+        dictPts[i++] = new POINT { X = 49, Y = 1350 };
+        dictPts[i++] = new POINT { X = 61, Y = 1350 };
+        dictPts[i++] = new POINT { X = 74, Y = 1350 };
+        dictPts[i++] = new POINT { X = 83, Y = 1350 };
+        dictPts[i++] = new POINT { X = 96, Y = 1350 };
+        dictPts[i++] = new POINT { X = 107, Y = 1350 };
+        dictPts[i++] = new POINT { X = 117, Y = 1350 };
+        dictPts[i++] = new POINT { X = 129, Y = 1350 };
+        dictPts[i++] = new POINT { X = 140, Y = 1350 };
+        dictPts[i++] = new POINT { X = 152, Y = 1350 };
+        dictPts[i++] = new POINT { X = 164, Y = 1350 };
+        dictPts[i++] = new POINT { X = 175, Y = 1350 };
+        dictPts[i++] = new POINT { X = 185, Y = 1350 };
+        dictPts[i++] = new POINT { X = 196, Y = 1350 };
+        dictPts[i++] = new POINT { X = 208, Y = 1350 };
+
+        // work
+        //dictPts[i++] = new POINT { X = 17, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 28, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 38, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 49, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 61, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 74, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 83, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 96, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 107, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 117, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 129, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 140, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 152, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 164, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 175, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 185, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 196, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 208, Y = 1339 };
         bool isPaused = true; // 程序暂停状态
 
         InitSleepTime();
@@ -143,17 +171,30 @@ class Program
                 continue;
             }
 
+            // 获取当前窗口句柄
+            IntPtr hWnd = GetForegroundWindow();
+
             // 检查是否按下特定键，如果按下则跳过检测
-            if (IsSkipKeyPressed())
+            if (IsSkipKeyPressed(hWnd, isPaused))
             {
                 continue; // 跳过本次检测
             }
 
-            // 获取当前窗口句柄
-            IntPtr hWnd = GetForegroundWindow();
 
             GetColors(hWnd, dictPts);
             CheckState(dictState);
+        }
+    }
+
+    private static void InitSleepTime()
+    {
+        for (int i = 0; i < 18; i++)
+        {
+            int key = i + 1;
+            Random random = new Random();
+            int time = random.Next(50, 201);
+            dictSleepTime.Add(key, time);
+
         }
     }
 
@@ -292,6 +333,14 @@ class Program
 
     }
 
+    //private static void SimulateKeybdEvent(byte keyCode)
+    //{
+    //    Console.WriteLine("send key event : " + keyCode);
+    //    keybd_event(keyCode, 0, KEYEVENTF_KEYDOWN, UIntPtr.Zero);  // 按下按键
+    //    Thread.Sleep(10);  // 等待 50 毫秒
+    //    keybd_event(keyCode, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);    // 释放按键
+    //}
+
     // 使用 SendInput 模拟键盘按键的函数
     private static void SimulateKeyPress(byte keyCode)
     {
@@ -309,6 +358,7 @@ class Program
 
         SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
     }
+
 
     private static void SimulateShiftKeyPress(byte keyCode)
     {
@@ -337,12 +387,39 @@ class Program
         SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
     }
 
+    private static void SimulateAltKeyPress(byte keyCode)
+    {
+        INPUT[] inputs = new INPUT[4];
+
+        // 按下 Alt 键
+        inputs[0].type = INPUT_KEYBOARD;
+        inputs[0].u.ki.wVk = VK_ALT;
+        inputs[0].u.ki.dwFlags = KEYEVENTF_KEYDOWN;
+
+        // 按下指定按键
+        inputs[1].type = INPUT_KEYBOARD;
+        inputs[1].u.ki.wVk = keyCode;
+        inputs[1].u.ki.dwFlags = KEYEVENTF_KEYDOWN;
+
+        // 松开指定按键
+        inputs[2].type = INPUT_KEYBOARD;
+        inputs[2].u.ki.wVk = keyCode;
+        inputs[2].u.ki.dwFlags = KEYEVENTF_KEYUP;
+
+        // 松开 Alt 键
+        inputs[3].type = INPUT_KEYBOARD;
+        inputs[3].u.ki.wVk = VK_ALT;
+        inputs[3].u.ki.dwFlags = KEYEVENTF_KEYUP;
+
+        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+    }
+
     // 将客户端坐标转换为屏幕坐标
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
 
     // 检查特定键是否被按下
-    private static bool IsSkipKeyPressed()
+    private static bool IsSkipKeyPressed(IntPtr hWnd, bool isPaused)
     {
         // 需要跳过检测的键的虚拟键码
         int[] skipKeys = {
@@ -357,22 +434,61 @@ class Program
 
         // 检查 Alt 键状态
         const int VK_MENU = 0x12; // Alt 键的虚拟键码
-        bool isAltPressed = (GetAsyncKeyState(VK_MENU) < 0);
+        bool isAltPressed = (CheckKeyPress(VK_MENU));
 
         foreach (int key in skipKeys)
         {
             // 如果 Alt 被按下并且任意一个特定键也被按下，返回 true
-            if (isAltPressed && GetAsyncKeyState(key) < 0)
+            if (isAltPressed && CheckKeyPress(key))
             {
                 return true;
             }
             // 直接检查特定键是否被按下，返回 true
-            if (GetAsyncKeyState(key) < 0)
+            if (CheckKeyPress(key))
             {
+                while (true)
+                {
+                    if (isPaused)
+                        break;
+                    else
+                    {
+                        if (CheckKeyPress(key))
+                        {
+                            if (isAltPressed)
+                            {
+                                Console.WriteLine("send alt key " + key);
+                                SimulateAltKeyPress((byte)key);
+                            }
+                            else
+                            {
+                                Console.WriteLine("send key " + key);
+                                SendKey(key, hWnd);
+                            }
+                            Thread.Sleep(200);
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                }
                 return true;
             }
         }
         return false; // 没有键被按下，返回 false
+    }
+
+    private static bool CheckKeyPress(int vk)
+    {
+        // 获取按键状态
+        short state = GetAsyncKeyState(vk);
+
+        // 检查按键是否被按下
+        if ((state & 0x8000) != 0) // 高位为1表示按下
+        {
+            return true;
+        }
+        return false;
     }
 
     // 检查鼠标中键是否被按下
@@ -380,17 +496,5 @@ class Program
     {
         const int VK_MBUTTON = 0x04; // 鼠标中键的虚拟键码
         return (GetAsyncKeyState(VK_MBUTTON) < 0);
-    }
-
-    private static void InitSleepTime()
-    {
-        for (int i = 0; i < 18; i++)
-        {
-            int key = i + 1;
-            Random random = new Random();
-            int time = random.Next(20, 201);
-            dictSleepTime.Add(key, time);
-
-        }
     }
 }
