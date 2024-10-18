@@ -19,14 +19,6 @@ class Program
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
-    [DllImport("user32.dll")]
-    public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
-
-    [DllImport("user32.dll")]
-    public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
-
-    [DllImport("user32.dll")]
-    public static extern bool PeekMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax, uint wRemoveMsg);
 
 
     // 键盘事件常量
@@ -54,7 +46,21 @@ class Program
     const int PM_REMOVE = 0x0001; // 消息从队列中移除
 
 
+    // 需要跳过检测的键的虚拟键码
+    private static int[] skipKeys = {
+            0xC0, // ` 键
+            0x31, 0x32, 0x33, 0x34, 0x35, 0x36, // 1 2 3 4 5 6
+            0x51, 0x45, 0x52, 0x54, 0x46, 0x47, // Q E R T F G
+            0x5A, 0x58, 0x43, 0x56, 0x42, // Z X C V B
+            // 包含大写字母的组合键
+            //0x31 + 0x20, 0x32 + 0x20, 0x33 + 0x20, 0x34 + 0x20, 0x35 + 0x20, 0x36 + 0x20, // Shift + 1 2 3 4 5 6
+            //0x51 + 0x20, 0x45 + 0x20, 0x52 + 0x20, 0x54 + 0x20, 0x46 + 0x20, 0x47 + 0x20, // Shift + Q E R T F G
+            //0x5A + 0x20, 0x58 + 0x20, 0x43 + 0x20, 0x56 + 0x20, 0x42 + 0x20 // Shift + Z X C V B
+        };
+
+
     private static int sleepTime;
+    private static Bitmap bitmap;
 
 
     private static Dictionary<int, bool> dictState = new Dictionary<int, bool>();
@@ -122,64 +128,56 @@ class Program
         public int Bottom;
     }
 
-    // 定义 MSG 结构体
-    [StructLayout(LayoutKind.Sequential)]
-    public struct MSG
-    {
-        public IntPtr hwnd;
-        public uint message;
-        public IntPtr wParam;
-        public IntPtr lParam;
-        public uint time;
-        public POINT pt;
-    }
-
     const int INPUT_KEYBOARD = 1;
 
+    ~Program()
+    {
+        bitmap?.Dispose();
+    }
 
     static void Main()
     {
         Dictionary<int, POINT> dictPts = new Dictionary<int, POINT>();
         int i = 1;
         // home
-        dictPts[i++] = new POINT { X = 15, Y = 1350 };
-        dictPts[i++] = new POINT { X = 28, Y = 1350 };
-        dictPts[i++] = new POINT { X = 38, Y = 1350 };
-        dictPts[i++] = new POINT { X = 49, Y = 1350 };
-        dictPts[i++] = new POINT { X = 61, Y = 1350 };
-        dictPts[i++] = new POINT { X = 74, Y = 1350 };
-        dictPts[i++] = new POINT { X = 83, Y = 1350 };
-        dictPts[i++] = new POINT { X = 96, Y = 1350 };
-        dictPts[i++] = new POINT { X = 107, Y = 1350 };
-        dictPts[i++] = new POINT { X = 117, Y = 1350 };
-        dictPts[i++] = new POINT { X = 129, Y = 1350 };
-        dictPts[i++] = new POINT { X = 140, Y = 1350 };
-        dictPts[i++] = new POINT { X = 152, Y = 1350 };
-        dictPts[i++] = new POINT { X = 164, Y = 1350 };
-        dictPts[i++] = new POINT { X = 175, Y = 1350 };
-        dictPts[i++] = new POINT { X = 185, Y = 1350 };
-        dictPts[i++] = new POINT { X = 196, Y = 1350 };
-        dictPts[i++] = new POINT { X = 208, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 15, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 28, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 38, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 49, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 61, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 74, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 83, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 96, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 107, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 117, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 129, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 140, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 152, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 164, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 175, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 185, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 196, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 208, Y = 1350 };
 
         // work
-        //dictPts[i++] = new POINT { X = 17, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 28, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 38, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 49, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 61, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 74, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 83, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 96, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 107, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 117, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 129, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 140, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 152, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 164, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 175, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 185, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 196, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 208, Y = 1339 };
+        dictPts[i++] = new POINT { X = 17, Y = 1339 };
+        dictPts[i++] = new POINT { X = 28, Y = 1339 };
+        dictPts[i++] = new POINT { X = 38, Y = 1339 };
+        dictPts[i++] = new POINT { X = 49, Y = 1339 };
+        dictPts[i++] = new POINT { X = 61, Y = 1339 };
+        dictPts[i++] = new POINT { X = 74, Y = 1339 };
+        dictPts[i++] = new POINT { X = 83, Y = 1339 };
+        dictPts[i++] = new POINT { X = 96, Y = 1339 };
+        dictPts[i++] = new POINT { X = 107, Y = 1339 };
+        dictPts[i++] = new POINT { X = 117, Y = 1339 };
+        dictPts[i++] = new POINT { X = 129, Y = 1339 };
+        dictPts[i++] = new POINT { X = 140, Y = 1339 };
+        dictPts[i++] = new POINT { X = 152, Y = 1339 };
+        dictPts[i++] = new POINT { X = 164, Y = 1339 };
+        dictPts[i++] = new POINT { X = 175, Y = 1339 };
+        dictPts[i++] = new POINT { X = 185, Y = 1339 };
+        dictPts[i++] = new POINT { X = 196, Y = 1339 };
+        dictPts[i++] = new POINT { X = 208, Y = 1339 };
         bool isPaused = true; // 程序暂停状态
 
         InitSleepTime();
@@ -194,6 +192,14 @@ class Program
             {
                 isPaused = !isPaused; // 切换暂停状态
                 Console.WriteLine(isPaused ? "程序已暂停" : "程序已继续");
+                if (isPaused)
+                {
+                    OnDisable();
+                }
+                else
+                {
+                    OnEnable();
+                }
                 Thread.Sleep(200); // 防止连续触发
             }
 
@@ -203,14 +209,14 @@ class Program
                 continue;
             }
 
-            // 获取当前窗口句柄
-            IntPtr hWnd = GetForegroundWindow();
             // 检查是否按下特定键，如果按下则跳过检测
-            if (IsSkipKeyPressed(hWnd))
+            if (IsSkipKeyPressed())
             {
                 continue; // 跳过本次检测
             }
 
+            // 获取当前窗口句柄
+            IntPtr hWnd = GetForegroundWindow();
 
             GetColors(hWnd, dictPts);
             CheckState(dictState);
@@ -258,7 +264,13 @@ class Program
 
         // 计算拷贝区域的最小矩形
         Rectangle bounds = GetBounds(screenPts); // 确保 GetBounds 使用的是屏幕坐标
-        Bitmap bitmap = new Bitmap(bounds.Width, bounds.Height);
+
+        // 检查是否需要重新创建 Bitmap
+        if (bitmap == null || bitmap.Width != bounds.Width || bitmap.Height != bounds.Height)
+        {
+            bitmap?.Dispose(); // 释放之前的 Bitmap
+            bitmap = new Bitmap(bounds.Width, bounds.Height);
+        }
 
         using (Graphics g = Graphics.FromImage(bitmap))
         {
@@ -474,77 +486,21 @@ class Program
     public static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
 
     // 检查特定键是否被按下
-    private static bool IsSkipKeyPressed(IntPtr hWnd)
+    private static bool IsSkipKeyPressed()
     {
-        // 需要跳过检测的键的虚拟键码
-        int[] skipKeys = {
-            0xC0, // ` 键
-            0x31, 0x32, 0x33, 0x34, 0x35, 0x36, // 1 2 3 4 5 6
-            0x51, 0x45, 0x52, 0x54, 0x46, 0x47, // Q E R T F G
-            0x5A, 0x58, 0x43, 0x56, 0x42, // Z X C V B
-            // 包含大写字母的组合键
-            //0x31 + 0x20, 0x32 + 0x20, 0x33 + 0x20, 0x34 + 0x20, 0x35 + 0x20, 0x36 + 0x20, // Shift + 1 2 3 4 5 6
-            //0x51 + 0x20, 0x45 + 0x20, 0x52 + 0x20, 0x54 + 0x20, 0x46 + 0x20, 0x47 + 0x20, // Shift + Q E R T F G
-            //0x5A + 0x20, 0x58 + 0x20, 0x43 + 0x20, 0x56 + 0x20, 0x42 + 0x20 // Shift + Z X C V B
-        };
-
-        // 注册热键
-        for (int i = 0; i < skipKeys.Length; i++)
+        foreach (var vk in skipKeys)
         {
-            if (!RegisterHotKey(hWnd, i, 0, (uint)skipKeys[i]))
+            if (IsKeyPressed(vk))
             {
-                Console.WriteLine($"无法注册热键: {skipKeys[i]}");
-            }
-        }
-
-        // 处理消息
-        MSG msg;
-        while (PeekMessage(out msg, IntPtr.Zero, 0, 0, PM_REMOVE))
-        {
-            if (msg.message == WM_HOTKEY)
-            {
-                int vk = (int)msg.wParam;
-                Console.WriteLine("Hotkey pressed: " + vk);
-                SimulateKeyPressLoop(vk);
+                // 每200ms发送一次
+                Thread.Sleep(100);
                 return true;
             }
         }
 
-        // 注销热键
-        for (int i = 0; i < skipKeys.Length; i++)
-        {
-            UnregisterHotKey(hWnd, i);
-        }
 
         return false; // 没有键被按下，返回 false
 
-    }
-
-    private static void SimulateKeyPressLoop(int vk)
-    {
-        Console.WriteLine($"物理键按下: {vk}");
-
-        // 按键按下后，进入模拟发送循环
-        while (IsKeyPressed(vk))
-        {
-            bool isAltPressed = (IsKeyPressed(VK_MENU));
-            if (isAltPressed)
-            {
-                Console.WriteLine("send alt key " + vk);
-                SimulateAltKeyPress((byte)vk);
-            }
-            else
-            {
-                Console.WriteLine("send key " + vk);
-                // 模拟按键发送
-                SimulateKeyPress((byte)vk);
-            }
-
-            // 每200ms发送一次
-            Thread.Sleep(200);
-        }
-
-        Console.WriteLine($"物理键抬起: {vk}");
     }
 
     private static bool IsKeyPressed(int vk)
@@ -558,5 +514,13 @@ class Program
     {
         const int VK_MBUTTON = 0x04; // 鼠标中键的虚拟键码
         return (GetAsyncKeyState(VK_MBUTTON) < 0);
+    }
+
+    private static void OnEnable()
+    {
+    }
+
+    private static void OnDisable()
+    {
     }
 }
