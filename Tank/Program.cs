@@ -17,7 +17,16 @@ class Program
     [DllImport("user32.dll")]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
     [DllImport("user32.dll")]
-    static extern bool SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+    public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("user32.dll")]
+    public static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll")]
+    public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    [DllImport("user32.dll")]
+    public static extern bool PeekMessage(out MSG lpMsg, IntPtr hWnd, uint wMsgFilterMin, uint wMsgFilterMax, uint wRemoveMsg);
 
 
     // 键盘事件常量
@@ -36,11 +45,13 @@ class Program
     const byte VK_SHIFT = 0x10; // Shift 键
     const byte VK_ALT = 0x12; // Alt 键
 
-    const byte VK_SEMICOLON = 0xBA; // ";" 键的虚拟键
+    const int VK_MENU = 0x12; // Alt 键的虚拟键码
+
     const uint KEYEVENTF_KEYDOWN = 0x0000;
     const uint KEYEVENTF_KEYUP = 0x0002;
 
-    const int WM_CHAR = 0x0102;
+    const int WM_HOTKEY = 0x0312;
+    const int PM_REMOVE = 0x0001; // 消息从队列中移除
 
 
     private static int sleepTime;
@@ -100,6 +111,27 @@ class Program
         public uint uMsg;
         public ushort wParamL;
         public ushort wParamH;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    // 定义 MSG 结构体
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MSG
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public IntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public POINT pt;
     }
 
     const int INPUT_KEYBOARD = 1;
@@ -173,9 +205,8 @@ class Program
 
             // 获取当前窗口句柄
             IntPtr hWnd = GetForegroundWindow();
-
             // 检查是否按下特定键，如果按下则跳过检测
-            if (IsSkipKeyPressed(hWnd, isPaused))
+            if (IsSkipKeyPressed(hWnd))
             {
                 continue; // 跳过本次检测
             }
@@ -201,14 +232,29 @@ class Program
     private static void GetColors(IntPtr hWnd, Dictionary<int, POINT> dictPts)
     {
         screenPts.Clear();
+        dictState.Clear();
+
+        // 获取窗口的屏幕位置和大小
+        if (!GetWindowRect(hWnd, out RECT windowRect))
+        {
+            return;
+        }
+
         foreach (var kvp in dictPts)
         {
             POINT pt = kvp.Value;
             ClientToScreen(hWnd, ref pt); // 将窗口坐标转换为屏幕坐标
             screenPts[kvp.Key] = pt;
+
+            // 检查点是否在窗口范围内
+            if (pt.X < windowRect.Left || pt.X > windowRect.Right ||
+                pt.Y < windowRect.Top || pt.Y > windowRect.Bottom)
+            {
+
+                return;
+            }
         }
 
-        dictState.Clear();
 
         // 计算拷贝区域的最小矩形
         Rectangle bounds = GetBounds(screenPts); // 确保 GetBounds 使用的是屏幕坐标
@@ -258,79 +304,88 @@ class Program
 
     private static void CheckState(Dictionary<int, bool> dictState)
     {
-        if (dictState[1] == true)
+        if (CheckPt(1))
         {
             SimulateKeyPress(VK_7);
         }
-        else if (dictState[2] == true)
+        else if (CheckPt(2))
         {
             SimulateKeyPress(VK_8);
         }
-        else if (dictState[3] == true)
+        else if (CheckPt(3))
         {
             SimulateKeyPress(VK_9);
         }
-        else if (dictState[4] == true)
+        else if (CheckPt(4))
         {
             SimulateKeyPress(VK_0);
         }
-        else if (dictState[5] == true)
+        else if (CheckPt(5))
         {
             SimulateKeyPress(VK_Jian);
         }
-        else if (dictState[6] == true)
+        else if (CheckPt(6))
         {
             SimulateKeyPress(VK_Deng);
         }
-        else if (dictState[7] == true)
+        else if (CheckPt(7))
         {
             SimulateKeyPress(VK_FangkuohaoZuo);
         }
-        else if (dictState[8] == true)
+        else if (CheckPt(8))
         {
             SimulateKeyPress(VK_FangkuohaoYou);
         }
-        else if (dictState[9] == true)
+        else if (CheckPt(9))
         {
             SimulateKeyPress(VK_Xiegang);
         }
-        else if (dictState[10] == true)
+        else if (CheckPt(10))
         {
             SimulateKeyPress(VK_Fenhao);
         }
-        else if (dictState[11] == true)
+        else if (CheckPt(11))
         {
             SimulateKeyPress(VK_Danyinhao);
         }
-        else if (dictState[12] == true)
+        else if (CheckPt(12))
         {
             SimulateKeyPress(VK_Juhao);
         }
-        else if (dictState[13] == true)
+        else if (CheckPt(13))
         {
             SimulateShiftKeyPress(VK_7);
         }
-        else if (dictState[14] == true)
+        else if (CheckPt(14))
         {
             SimulateShiftKeyPress(VK_8);
         }
-        else if (dictState[15] == true)
+        else if (CheckPt(15))
         {
             SimulateShiftKeyPress(VK_9);
         }
-        else if (dictState[16] == true)
+        else if (CheckPt(16))
         {
             SimulateShiftKeyPress(VK_0);
         }
-        else if (dictState[17] == true)
+        else if (CheckPt(17))
         {
             SimulateShiftKeyPress(VK_Jian);
         }
-        else if (dictState[18] == true)
+        else if (CheckPt(18))
         {
             SimulateShiftKeyPress(VK_Deng);
         }
 
+    }
+
+    private static bool CheckPt(int index)
+    {
+        if (dictState.ContainsKey(index) && dictState[index] == true)
+        {
+            return true;
+        }
+        return false;
     }
 
     //private static void SimulateKeybdEvent(byte keyCode)
@@ -419,10 +474,11 @@ class Program
     public static extern bool ClientToScreen(IntPtr hWnd, ref POINT lpPoint);
 
     // 检查特定键是否被按下
-    private static bool IsSkipKeyPressed(IntPtr hWnd, bool isPaused)
+    private static bool IsSkipKeyPressed(IntPtr hWnd)
     {
         // 需要跳过检测的键的虚拟键码
         int[] skipKeys = {
+            0xC0, // ` 键
             0x31, 0x32, 0x33, 0x34, 0x35, 0x36, // 1 2 3 4 5 6
             0x51, 0x45, 0x52, 0x54, 0x46, 0x47, // Q E R T F G
             0x5A, 0x58, 0x43, 0x56, 0x42, // Z X C V B
@@ -432,63 +488,69 @@ class Program
             //0x5A + 0x20, 0x58 + 0x20, 0x43 + 0x20, 0x56 + 0x20, 0x42 + 0x20 // Shift + Z X C V B
         };
 
-        // 检查 Alt 键状态
-        const int VK_MENU = 0x12; // Alt 键的虚拟键码
-        bool isAltPressed = (CheckKeyPress(VK_MENU));
-
-        foreach (int key in skipKeys)
+        // 注册热键
+        for (int i = 0; i < skipKeys.Length; i++)
         {
-            // 如果 Alt 被按下并且任意一个特定键也被按下，返回 true
-            if (isAltPressed && CheckKeyPress(key))
+            if (!RegisterHotKey(hWnd, i, 0, (uint)skipKeys[i]))
             {
-                return true;
+                Console.WriteLine($"无法注册热键: {skipKeys[i]}");
             }
-            // 直接检查特定键是否被按下，返回 true
-            if (CheckKeyPress(key))
+        }
+
+        // 处理消息
+        MSG msg;
+        while (PeekMessage(out msg, IntPtr.Zero, 0, 0, PM_REMOVE))
+        {
+            if (msg.message == WM_HOTKEY)
             {
-                while (true)
-                {
-                    if (isPaused)
-                        break;
-                    else
-                    {
-                        if (CheckKeyPress(key))
-                        {
-                            if (isAltPressed)
-                            {
-                                Console.WriteLine("send alt key " + key);
-                                SimulateAltKeyPress((byte)key);
-                            }
-                            else
-                            {
-                                Console.WriteLine("send key " + key);
-                                SendKey(key, hWnd);
-                            }
-                            Thread.Sleep(200);
-                        }
-                        else
-                        {
-                            break;
-                        }
-                    }
-                }
+                int vk = (int)msg.wParam;
+                Console.WriteLine("Hotkey pressed: " + vk);
+                SimulateKeyPressLoop(vk);
                 return true;
             }
         }
+
+        // 注销热键
+        for (int i = 0; i < skipKeys.Length; i++)
+        {
+            UnregisterHotKey(hWnd, i);
+        }
+
         return false; // 没有键被按下，返回 false
+
     }
 
-    private static bool CheckKeyPress(int vk)
+    private static void SimulateKeyPressLoop(int vk)
     {
-        // 获取按键状态
-        short state = GetAsyncKeyState(vk);
+        Console.WriteLine($"物理键按下: {vk}");
 
-        // 检查按键是否被按下
-        if ((state & 0x8000) != 0) // 高位为1表示按下
+        // 按键按下后，进入模拟发送循环
+        while (IsKeyPressed(vk))
         {
-            return true;
+            bool isAltPressed = (IsKeyPressed(VK_MENU));
+            if (isAltPressed)
+            {
+                Console.WriteLine("send alt key " + vk);
+                SimulateAltKeyPress((byte)vk);
+            }
+            else
+            {
+                Console.WriteLine("send key " + vk);
+                // 模拟按键发送
+                SimulateKeyPress((byte)vk);
+            }
+
+            // 每200ms发送一次
+            Thread.Sleep(200);
         }
-        return false;
+
+        Console.WriteLine($"物理键抬起: {vk}");
+    }
+
+    private static bool IsKeyPressed(int vk)
+    {
+        // 检查按键状态，GetAsyncKeyState的返回值最高位为1表示按下
+        return (GetAsyncKeyState(vk) & 0x8000) != 0;
     }
 
     // 检查鼠标中键是否被按下
