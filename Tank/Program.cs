@@ -229,7 +229,7 @@ class Program
         {
             int key = i + 1;
             Random random = new Random();
-            int time = random.Next(50, 201);
+            int time = random.Next(50, 151);
             dictSleepTime.Add(key, time);
 
         }
@@ -499,7 +499,7 @@ class Program
             if (IsKeyPressed(vk))
             {
                 // 每200ms发送一次
-                Thread.Sleep(200);
+                Thread.Sleep(300);
                 return true;
             }
         }
