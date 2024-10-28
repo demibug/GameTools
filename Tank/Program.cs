@@ -59,6 +59,7 @@ class Program
         };
 
 
+    private static bool wasPressedMiddleButton;
     private static int sleepTime;
     private static Bitmap bitmap;
 
@@ -140,44 +141,44 @@ class Program
         Dictionary<int, POINT> dictPts = new Dictionary<int, POINT>();
         int i = 1;
         // home
-        dictPts[i++] = new POINT { X = 15, Y = 1350 };
-        dictPts[i++] = new POINT { X = 28, Y = 1350 };
-        dictPts[i++] = new POINT { X = 38, Y = 1350 };
-        dictPts[i++] = new POINT { X = 49, Y = 1350 };
-        dictPts[i++] = new POINT { X = 61, Y = 1350 };
-        dictPts[i++] = new POINT { X = 74, Y = 1350 };
-        dictPts[i++] = new POINT { X = 83, Y = 1350 };
-        dictPts[i++] = new POINT { X = 96, Y = 1350 };
-        dictPts[i++] = new POINT { X = 107, Y = 1350 };
-        dictPts[i++] = new POINT { X = 117, Y = 1350 };
-        dictPts[i++] = new POINT { X = 129, Y = 1350 };
-        dictPts[i++] = new POINT { X = 140, Y = 1350 };
-        dictPts[i++] = new POINT { X = 152, Y = 1350 };
-        dictPts[i++] = new POINT { X = 164, Y = 1350 };
-        dictPts[i++] = new POINT { X = 175, Y = 1350 };
-        dictPts[i++] = new POINT { X = 185, Y = 1350 };
-        dictPts[i++] = new POINT { X = 196, Y = 1350 };
-        dictPts[i++] = new POINT { X = 208, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 15, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 28, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 38, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 49, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 61, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 74, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 83, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 96, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 107, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 117, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 129, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 140, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 152, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 164, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 175, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 185, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 196, Y = 1350 };
+        //dictPts[i++] = new POINT { X = 208, Y = 1350 };
 
         // work
-        //dictPts[i++] = new POINT { X = 17, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 28, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 38, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 49, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 61, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 74, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 83, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 96, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 107, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 117, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 129, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 140, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 152, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 164, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 175, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 185, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 196, Y = 1339 };
-        //dictPts[i++] = new POINT { X = 208, Y = 1339 };
+        dictPts[i++] = new POINT { X = 17, Y = 1339 };
+        dictPts[i++] = new POINT { X = 28, Y = 1339 };
+        dictPts[i++] = new POINT { X = 38, Y = 1339 };
+        dictPts[i++] = new POINT { X = 49, Y = 1339 };
+        dictPts[i++] = new POINT { X = 61, Y = 1339 };
+        dictPts[i++] = new POINT { X = 74, Y = 1339 };
+        dictPts[i++] = new POINT { X = 83, Y = 1339 };
+        dictPts[i++] = new POINT { X = 96, Y = 1339 };
+        dictPts[i++] = new POINT { X = 107, Y = 1339 };
+        dictPts[i++] = new POINT { X = 117, Y = 1339 };
+        dictPts[i++] = new POINT { X = 129, Y = 1339 };
+        dictPts[i++] = new POINT { X = 140, Y = 1339 };
+        dictPts[i++] = new POINT { X = 152, Y = 1339 };
+        dictPts[i++] = new POINT { X = 164, Y = 1339 };
+        dictPts[i++] = new POINT { X = 175, Y = 1339 };
+        dictPts[i++] = new POINT { X = 185, Y = 1339 };
+        dictPts[i++] = new POINT { X = 196, Y = 1339 };
+        dictPts[i++] = new POINT { X = 208, Y = 1339 };
         bool isPaused = true; // 程序暂停状态
 
         InitSleepTime();
@@ -190,17 +191,25 @@ class Program
             // 检查是否按下鼠标中键，切换暂停状态
             if (IsMouseMiddleButtonPressed())
             {
-                isPaused = !isPaused; // 切换暂停状态
-                Console.WriteLine(isPaused ? "=====================程序已暂停=====================" : "!!!!!程序已继续!!!!!");
-                if (isPaused)
+                if (wasPressedMiddleButton == false)
                 {
-                    OnDisable();
+                    isPaused = !isPaused; // 切换暂停状态
+                    Console.WriteLine(isPaused ? "=====================程序已暂停=====================" : "!!!!!程序已继续!!!!!");
+                    if (isPaused)
+                    {
+                        OnDisable();
+                    }
+                    else
+                    {
+                        OnEnable();
+                    }
+
+                    wasPressedMiddleButton = true;
                 }
-                else
-                {
-                    OnEnable();
-                }
-                Thread.Sleep(200); // 防止连续触发
+            }
+            else
+            {
+                wasPressedMiddleButton = false;
             }
 
             // 如果程序处于暂停状态，跳过后续处理
@@ -228,9 +237,8 @@ class Program
         for (int i = 0; i < 18; i++)
         {
             int key = i + 1;
-            Random random = new Random();
-            int time = random.Next(50, 151);
-            dictSleepTime.Add(key, time);
+            int delayTime = new Random().Next(100, 200);
+            dictSleepTime.Add(key, delayTime);
 
         }
     }
@@ -400,14 +408,6 @@ class Program
         return false;
     }
 
-    //private static void SimulateKeybdEvent(byte keyCode)
-    //{
-    //    Console.WriteLine("send key event : " + keyCode);
-    //    keybd_event(keyCode, 0, KEYEVENTF_KEYDOWN, UIntPtr.Zero);  // 按下按键
-    //    Thread.Sleep(10);  // 等待 50 毫秒
-    //    keybd_event(keyCode, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);    // 释放按键
-    //}
-
     // 使用 SendInput 模拟键盘按键的函数
     private static void SimulateKeyPress(byte keyCode)
     {
@@ -422,6 +422,18 @@ class Program
         inputs[1].type = INPUT_KEYBOARD;
         inputs[1].u.ki.wVk = keyCode;
         inputs[1].u.ki.dwFlags = KEYEVENTF_KEYUP;
+
+        SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+    }
+
+    private static void ReleaseShiftKey()
+    {
+        INPUT[] inputs = new INPUT[1];
+
+        // 弹起 Shift 键
+        inputs[0].type = INPUT_KEYBOARD;
+        inputs[0].u.ki.wVk = VK_SHIFT;
+        inputs[0].u.ki.dwFlags = KEYEVENTF_KEYUP;
 
         SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
     }
@@ -499,7 +511,7 @@ class Program
             if (IsKeyPressed(vk))
             {
                 // 每200ms发送一次
-                Thread.Sleep(300);
+                Thread.Sleep(500);
                 return true;
             }
         }
