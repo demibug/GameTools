@@ -229,6 +229,12 @@ class Program
 
             GetColors(hWnd, dictPts);
             CheckState(dictState);
+
+            // 挂机
+            //SimulateKeyPress(0x41);
+            //Thread.Sleep(10000);
+            //SimulateKeyPress(0x44);
+            //Thread.Sleep(20000);
         }
     }
 
@@ -237,7 +243,7 @@ class Program
         for (int i = 0; i < 18; i++)
         {
             int key = i + 1;
-            int delayTime = new Random().Next(100, 200);
+            int delayTime = new Random().Next(50, 150);
             dictSleepTime.Add(key, delayTime);
 
         }
