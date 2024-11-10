@@ -22,6 +22,11 @@ class Program
 
 
     // 键盘事件常量
+    const byte VK_1 = 0x31;
+    const byte VK_2 = 0x32;
+    const byte VK_3 = 0x33;
+    const byte VK_4 = 0x34;
+    const byte VK_5 = 0x35;
     const byte VK_7 = 0x37;
     const byte VK_8 = 0x38;
     const byte VK_9 = 0x39;
@@ -141,44 +146,49 @@ class Program
         Dictionary<int, POINT> dictPts = new Dictionary<int, POINT>();
         int i = 1;
         // home
-        //dictPts[i++] = new POINT { X = 15, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 28, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 38, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 49, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 61, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 74, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 83, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 96, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 107, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 117, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 129, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 140, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 152, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 164, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 175, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 185, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 196, Y = 1350 };
-        //dictPts[i++] = new POINT { X = 208, Y = 1350 };
+        dictPts[i++] = new POINT { X = 15, Y = 1350 };
+        dictPts[i++] = new POINT { X = 28, Y = 1350 };
+        dictPts[i++] = new POINT { X = 38, Y = 1350 };
+        dictPts[i++] = new POINT { X = 49, Y = 1350 };
+        dictPts[i++] = new POINT { X = 61, Y = 1350 };
+        dictPts[i++] = new POINT { X = 74, Y = 1350 };
+        dictPts[i++] = new POINT { X = 83, Y = 1350 };
+        dictPts[i++] = new POINT { X = 96, Y = 1350 };
+        dictPts[i++] = new POINT { X = 107, Y = 1350 };
+        dictPts[i++] = new POINT { X = 117, Y = 1350 };
+        dictPts[i++] = new POINT { X = 129, Y = 1350 };
+        dictPts[i++] = new POINT { X = 140, Y = 1350 };
+        dictPts[i++] = new POINT { X = 152, Y = 1350 };
+        dictPts[i++] = new POINT { X = 164, Y = 1350 };
+        dictPts[i++] = new POINT { X = 175, Y = 1350 };
+        dictPts[i++] = new POINT { X = 185, Y = 1350 };
+        dictPts[i++] = new POINT { X = 196, Y = 1350 };
+        dictPts[i++] = new POINT { X = 209, Y = 1350 };
+        dictPts[i++] = new POINT { X = 222, Y = 1350 };
+        dictPts[i++] = new POINT { X = 233, Y = 1350 };
+        dictPts[i++] = new POINT { X = 243, Y = 1350 };
+        dictPts[i++] = new POINT { X = 254, Y = 1350 };
+        dictPts[i++] = new POINT { X = 264, Y = 1350 };
 
         // work
-        dictPts[i++] = new POINT { X = 17, Y = 1339 };
-        dictPts[i++] = new POINT { X = 28, Y = 1339 };
-        dictPts[i++] = new POINT { X = 38, Y = 1339 };
-        dictPts[i++] = new POINT { X = 49, Y = 1339 };
-        dictPts[i++] = new POINT { X = 61, Y = 1339 };
-        dictPts[i++] = new POINT { X = 74, Y = 1339 };
-        dictPts[i++] = new POINT { X = 83, Y = 1339 };
-        dictPts[i++] = new POINT { X = 96, Y = 1339 };
-        dictPts[i++] = new POINT { X = 107, Y = 1339 };
-        dictPts[i++] = new POINT { X = 117, Y = 1339 };
-        dictPts[i++] = new POINT { X = 129, Y = 1339 };
-        dictPts[i++] = new POINT { X = 140, Y = 1339 };
-        dictPts[i++] = new POINT { X = 152, Y = 1339 };
-        dictPts[i++] = new POINT { X = 164, Y = 1339 };
-        dictPts[i++] = new POINT { X = 175, Y = 1339 };
-        dictPts[i++] = new POINT { X = 185, Y = 1339 };
-        dictPts[i++] = new POINT { X = 196, Y = 1339 };
-        dictPts[i++] = new POINT { X = 208, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 17, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 28, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 38, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 49, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 61, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 74, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 83, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 96, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 107, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 117, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 129, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 140, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 152, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 164, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 175, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 185, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 196, Y = 1339 };
+        //dictPts[i++] = new POINT { X = 208, Y = 1339 };
         bool isPaused = true; // 程序暂停状态
 
         InitSleepTime();
@@ -240,7 +250,7 @@ class Program
 
     private static void InitSleepTime()
     {
-        for (int i = 0; i < 18; i++)
+        for (int i = 0; i < 23; i++)
         {
             int key = i + 1;
             int delayTime = new Random().Next(50, 150);
@@ -402,7 +412,26 @@ class Program
         {
             SimulateShiftKeyPress(VK_Deng);
         }
-
+        else if (CheckPt(19))
+        {
+            SimulateShiftKeyPress(VK_1);
+        }
+        else if (CheckPt(20))
+        {
+            SimulateShiftKeyPress(VK_2);
+        }
+        else if (CheckPt(21))
+        {
+            SimulateShiftKeyPress(VK_3);
+        }
+        else if (CheckPt(22))
+        {
+            SimulateShiftKeyPress(VK_4);
+        }
+        else if (CheckPt(23))
+        {
+            SimulateShiftKeyPress(VK_5);
+        }
     }
 
     private static bool CheckPt(int index)
