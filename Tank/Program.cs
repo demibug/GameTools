@@ -194,9 +194,9 @@ class Program
         dictPts[i++] = new POINT { X = 225, Y = 1370 };
         dictPts[i++] = new POINT { X = 236, Y = 1370 };
         dictPts[i++] = new POINT { X = 248, Y = 1370 };
-        dictPts[i++] = new POINT { X = 253, Y = 1370 };
-        dictPts[i++] = new POINT { X = 264, Y = 1370 };
-        dictPts[i++] = new POINT { X = 275, Y = 1370 };
+        dictPts[i++] = new POINT { X = 260, Y = 1370 };
+        dictPts[i++] = new POINT { X = 271, Y = 1370 };
+        dictPts[i++] = new POINT { X = 283, Y = 1370 };
         bool isPaused = true; // 程序暂停状态
 
         InitSleepTime();
