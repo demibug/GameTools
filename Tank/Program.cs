@@ -172,6 +172,32 @@ class Program
         //dictPts[i++] = new POINT { X = 264, Y = 1350 };
         //dictPts[i++] = new POINT { X = 279, Y = 1350 };
 
+        // laptop
+        //dictPts[i++] = new POINT { X = 17, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 25, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 35, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 45, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 55, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 65, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 75, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 85, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 95, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 105, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 115, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 125, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 135, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 145, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 155, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 165, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 175, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 185, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 195, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 205, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 215, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 225, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 235, Y = 1370 };
+        //dictPts[i++] = new POINT { X = 245, Y = 1370 };
+
         // work
         dictPts[i++] = new POINT { X = 17, Y = 1370 };
         dictPts[i++] = new POINT { X = 28, Y = 1370 };
