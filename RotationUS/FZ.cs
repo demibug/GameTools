@@ -20,9 +20,9 @@ class FZ
     }
     #endregion
 
-    // ĞèÒªÌø¹ı¼ì²âµÄ¼üµÄĞéÄâ¼üÂë
+    // éœ€è¦è·³è¿‡æ£€æµ‹çš„æŒ‰é”®è™šæ‹Ÿé”®ç 
     public int[] skipKeys = {
-        //0xC0, // ` ¼ü
+        //0xC0, // ` é”®
         //0x31, // 1
         //0x32, // 2
         0x33, // 3
@@ -40,7 +40,7 @@ class FZ
         //0x43, // C
         //0x56, // V
         //0x42, // B
-        // °üº¬´óĞ´×ÖÄ¸µÄ×éºÏ¼ü
+        // åŒ…å«å¤§å†™å­—æ¯çš„ç»„åˆé”®
         //0x31 + 0x20, 0x32 + 0x20, 0x33 + 0x20, 0x34 + 0x20, 0x35 + 0x20, 0x36 + 0x20, // Shift + 1 2 3 4 5 6
         //0x51 + 0x20, 0x45 + 0x20, 0x52 + 0x20, 0x54 + 0x20, 0x46 + 0x20, 0x47 + 0x20, // Shift + Q E R T F G
         //0x5A + 0x20, 0x58 + 0x20, 0x43 + 0x20, 0x56 + 0x20, 0x42 + 0x20 // Shift + Z X C V B
@@ -71,6 +71,7 @@ class FZ
     private int m_colorIdxExecuteRecommend = 24;
     private int m_colorIdxThrowRecommend = 25;
     private int m_colorIdxVirtoryRushIsUsable = 26;
+    private int m_colorIdxFoxBagCD = 27;
 
     private int m_colorIdxShieldBlockCharge1 = 1;
     private int m_colorIdxShieldBlockCharge2 = 2;
@@ -95,6 +96,7 @@ class FZ
     private int m_keyExecute = 14;
     private int m_keySuilieThrow = 15;
     private int m_keyThrow = 16;
+    private int m_keyFoxBag = 18;
     public void Process(Dictionary<int, Color> dictFrameColors, Dictionary<int, Color> dictBarColors, Dictionary<int, bool> dictStates)
     {
         bool isCombat = GetColorBoolean(m_colorIdxIsCombat, dictFrameColors);
@@ -117,6 +119,7 @@ class FZ
         bool isThunderClapCd = GetColorBoolean(m_colorIdxThunderClapCD, dictFrameColors);
         bool isAvatarCd = GetColorBoolean(m_colorIdxAvatarCD, dictFrameColors);
         bool isSuilieThrowCd = GetColorBoolean(m_colorIdSuilieThrowCD, dictFrameColors);
+        bool isFoxBagCd = GetColorBoolean(m_colorIdxFoxBagCD, dictFrameColors);
 
         bool isShieldSlamRecommend = GetColorBoolean(m_colorIdxShieldSlamRecommend, dictFrameColors);
         bool isThunderClapRecommend = GetColorBoolean(m_colorIdxThunderClapRecommend, dictFrameColors);
@@ -133,119 +136,126 @@ class FZ
 
         bool isProcessed = false;
 
-        // Ê¤ÀûÔÚÍû
+        // èƒœåˆ©åœ¨æœ›
         if (!isProcessed && isRange5 && hpPct <= 0.7f && isVictoryRushCd && isVictoryRusnUsable)
         {
             isProcessed = true;
             dictStates[m_keyVirtoryRush] = true;
         }
 
-        // ¶ÜÇ½
-        if (!isProcessed && isRange10 && hpPct <= 0.35f && isShieldWallCd)
+        // ç›¾å¢™
+        //if (!isProcessed && isRange10 && hpPct <= 0.35f && isShieldWallCd)
+        //{
+        //    isProcessed = true;
+        //    dictStates[m_keyShieldWall] = true;
+        //}
+
+        // è¢‹é‡Œä¹¾å¤
+        if (!isProcessed && isCombat && isRange15 && hpPct <= 0.6f && isFoxBagCd)
         {
             isProcessed = true;
-            dictStates[m_keyShieldWall] = true;
+            dictStates[m_keyFoxBag] = true;
         }
 
-        // ÖÎÁÆÊ¯
+        // æ²»ç–—çŸ³
         if (!isProcessed && isRange10 && hpPct <= 0.4f && isHealStoneUsable)
         {
             isProcessed = true;
             dictStates[m_keyHealStone] = true;
         }
 
-        // ÑªÆ¿
+        // è¡€ç“¶
         if (!isProcessed && isRange10 && hpPct <= 0.4f && isHpPotionUsable)
         {
             isProcessed = true;
             dictStates[m_keyHpPotion] = true;
         }
 
-        // ¶ÜÅÆ¸ñµ²
+        // ç›¾ç‰Œæ ¼æŒ¡
         if (!isProcessed && isRange10 && isShieldBlockCharge2 && mpPct >= 0.33f)
         {
             isProcessed = true;
             dictStates[m_keyShieldBlock] = true;
         }
 
-        // ÎŞÊÓ¿àÍ´
+        // æ— è§†ç—›è‹¦
         if (!isProcessed && isRange10 && isNeedIp)
         {
             isProcessed = true;
             dictStates[m_keyIp] = true;
         }
 
-        // ÎŞÊÓ¿àÍ´(Å­ÆøÌ«¶à)
+        // æ— è§†ç—›è‹¦(æ€’æ°”å¤ªå¤š)
         if (!isProcessed && isRange10 && isInTeam && mpPct >= 0.8f)
         {
             isProcessed = true;
             dictStates[m_keyIp] = true;
         }
 
-        // ÌìÉñÏÂ·²
+        // å¤©ç¥ä¸‹å‡¡
         if (!isProcessed && isJunGuanMark && isRange5 && isAvatarCd && !isThunderClapCd)
         {
             isProcessed = true;
             dictStates[m_keyAvatar] = true;
         }
 
-        // È¡Ïû¾ü¹Ùmark
+        // å–æ¶ˆå†›å®˜æ ‡è®°
         if (!isProcessed && isJunGuanMark && (!isAvatarCd || !isCombat))
         {
             isProcessed = true;
             dictStates[m_keyCancelJunGuan] = true;
         }
 
-        // ËéÁÑÍ¶ÖÀ
-        if (!isProcessed && isRange15 && hasAbsorb && isSuilieThrowCd)
-        {
-            isProcessed = true;
-            dictStates[m_keySuilieThrow] = true;
-        }
+        // ç¢è£‚æŠ•æ·
+        //if (!isProcessed && isRange15 && hasAbsorb && isSuilieThrowCd)
+        //{
+        //    isProcessed = true;
+        //    dictStates[m_keySuilieThrow] = true;
+        //}
 
-        // ¶ÜÅÆ³å·æ
-        if (!isProcessed && isRange10 && isShieldChargeCd)
-        {
-            isProcessed = true;
-            dictStates[m_keyShieldCharge] = true;
-        }
+        // ç›¾ç‰Œå†²é”‹
+        //if (!isProcessed && isRange10 && isShieldChargeCd)
+        //{
+        //    isProcessed = true;
+        //    dictStates[m_keyShieldCharge] = true;
+        //}
 
-        // ´ìÖ¾Å­ºğ
+        // æŒ«å¿—æ€’å¼
         if (!isProcessed && isRange5 && isCuoZhiCd)
         {
             isProcessed = true;
             dictStates[m_keyCuoZhi] = true;
         }
 
-        // ¶ÜÃÍ
+        // ç›¾ç‰ŒçŒ›å‡»
         if (!isProcessed && isRange5 && isShieldSlamRecommend)
         {
             isProcessed = true;
             dictStates[m_keyShieldSlam] = true;
         }
 
-        // À×öª
+        // é›·éœ†ä¸€å‡»
         if (!isProcessed && isRange5 && isThunderClapRecommend)
         {
             isProcessed = true;
             dictStates[m_keyThunderClap] = true;
         }
 
-        // ¸´³ğ
+        // å¤ä»‡
         if (!isProcessed && isRange5 && isRevengeRecommend)
         {
             isProcessed = true;
             dictStates[m_keyRevenge] = true;
         }
 
-        // Õ¶É±
+        // æ–©æ€
         if (!isProcessed && isRange5 && isExecuteRecommend)
         {
             isProcessed = true;
             dictStates[m_keyExecute] = true;
         }
 
-        // Ó¢ÓÂÍ¶ÖÀ
+        // è‹±å‹‡æŠ•æ·
         if (!isProcessed && isRange15 && isThrowRecommend)
         {
             isProcessed = true;
