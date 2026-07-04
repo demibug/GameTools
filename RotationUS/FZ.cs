@@ -65,6 +65,7 @@ class FZ
     private int m_colorIdxThunderClapCD = 17;
     private int m_colorIdxAvatarCD = 18;
     private int m_colorIdSuilieThrowCD = 19;
+    private int m_colorIdxInterruptCD = 20;
     private int m_colorIdxShieldSlamRecommend = 21;
     private int m_colorIdxThunderClapRecommend = 22;
     private int m_colorIdxRevengeRecommend = 23;
@@ -72,18 +73,20 @@ class FZ
     private int m_colorIdxThrowRecommend = 25;
     private int m_colorIdxVirtoryRushIsUsable = 26;
     private int m_colorIdxFoxBagCD = 27;
+    private int m_colorIdxFoodMark = 28;
+    private int m_colorIdxIsTargetCasting = 29;
 
     private int m_colorIdxShieldBlockCharge1 = 1;
     private int m_colorIdxShieldBlockCharge2 = 2;
 
 
-    private int m_colorIdxIp = 31;
+    private int m_colorIdxIp = 51;
     private Color m_colorIp = Color.FromArgb(255, 144, 92, 18);
 
     private int m_keyVirtoryRush = 1;
     private int m_keyShieldWall = 2;
     private int m_keyAvatar = 3;
-    private int m_keyCancelJunGuan = 4;
+    private int m_keyInterrupt = 4;
     private int m_keyHealStone = 5;
     private int m_keyHpPotion = 6;
     private int m_keyShieldBlock = 7;
@@ -97,6 +100,9 @@ class FZ
     private int m_keySuilieThrow = 15;
     private int m_keyThrow = 16;
     private int m_keyFoxBag = 18;
+
+    private int m_keyCancelJunGuan = 28;
+    private int m_keyCancelFoodMark = 29;
     public void Process(Dictionary<int, Color> dictFrameColors, Dictionary<int, Color> dictBarColors, Dictionary<int, bool> dictStates)
     {
         bool isCombat = GetColorBoolean(m_colorIdxIsCombat, dictFrameColors);
@@ -109,6 +115,8 @@ class FZ
         bool isJunGuanMark = GetColorBoolean(m_colorIdxJunGuanMark, dictFrameColors);
         bool isInTeam = GetColorBoolean(m_colorIdxIsInTeam, dictFrameColors);
         bool hasAbsorb = GetColorBoolean(m_colorIdxHasAbsorb, dictFrameColors);
+        bool isFoodMark = GetColorBoolean(m_colorIdxFoodMark, dictFrameColors);
+        bool isTargetCasting = GetColorBoolean(m_colorIdxIsTargetCasting, dictFrameColors);
 
         bool isHealStoneUsable = GetColorBoolean(m_colorIdxPotionHealStone, dictFrameColors);
         bool isHpPotionUsable = GetColorBoolean(m_colorIdxPotionHp, dictFrameColors);
@@ -119,6 +127,7 @@ class FZ
         bool isThunderClapCd = GetColorBoolean(m_colorIdxThunderClapCD, dictFrameColors);
         bool isAvatarCd = GetColorBoolean(m_colorIdxAvatarCD, dictFrameColors);
         bool isSuilieThrowCd = GetColorBoolean(m_colorIdSuilieThrowCD, dictFrameColors);
+        bool isInterruptCD = GetColorBoolean(m_colorIdxInterruptCD, dictFrameColors);
         bool isFoxBagCd = GetColorBoolean(m_colorIdxFoxBagCD, dictFrameColors);
 
         bool isShieldSlamRecommend = GetColorBoolean(m_colorIdxShieldSlamRecommend, dictFrameColors);
@@ -171,6 +180,20 @@ class FZ
             dictStates[m_keyHpPotion] = true;
         }
 
+        // interrupt mark
+        if (!isProcessed && isFoodMark && (!isCombat || !isTargetCasting || !isInterruptCD || !isRange5))
+        {
+            isProcessed = true;
+            dictStates[m_keyCancelFoodMark] = true;
+        }
+
+        // 打断
+        if (!isProcessed && isCombat && isRange5 && isTargetCasting && isInterruptCD && isFoodMark)
+        {
+            isProcessed = true;
+            dictStates[m_keyInterrupt] = true;
+        }
+
         // 盾牌格挡
         if (!isProcessed && isRange10 && isShieldBlockCharge2 && mpPct >= 0.33f)
         {
@@ -179,7 +202,7 @@ class FZ
         }
 
         // 无视痛苦
-        if (!isProcessed && isRange10 && isNeedIp)
+        if (!isProcessed && isRange10 && isNeedIp && mpPct >= 0.36f)
         {
             isProcessed = true;
             dictStates[m_keyIp] = true;
@@ -285,7 +308,7 @@ class FZ
     private bool GetColorSpecial(int colorIdx, Dictionary<int, Color> dictColors, Color targetColor)
     {
         Color color = dictColors[colorIdx];
-        if (color.R == targetColor.R && color.G == targetColor.G && color.B == targetColor.B)
+        if (color.R == 0 && color.G == 0 && color.B == 0)
         {
             return true;
         }

@@ -287,7 +287,7 @@ class Program
         //dictFrames[50] = new POINT { X = 572, Y = frameY };
 
         // 特殊点
-        dictFrames[51] = new POINT { X = 615, Y = 3 };
+        dictFrames[51] = new POINT { X = 610, Y = 8 };
 
 
         Dictionary<int, POINT> dictBars = new Dictionary<int, POINT>();
