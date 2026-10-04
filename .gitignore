@@ -1,2 +1,31 @@
-/CheckPos/.vs
-/Tank/.vs
+# .NET build and publish outputs (all projects)
+[Bb]in/
+[Oo]bj/
+[Pp]ublish/
+artifacts/
+dist/
+releases/
+TestResults/
+
+# IDE caches and per-user settings
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.pubxml.user
+
+# Python helper caches
+__pycache__/
+*.pyc
+*.pyo
+
+# Temporary files and Windows metadata
+*.tmp
+*.bak
+*.swp
+*.swo
+Thumbs.db
+Desktop.ini
+.DS_Store

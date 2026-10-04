@@ -178,7 +178,7 @@ class Program
         barBitmap?.Dispose();
     }
 
-    static void Main()
+    public static void RunLegacy()
     {
         Dictionary<int, POINT> dictFrames = new Dictionary<int, POINT>();
         int frameY = 0;
@@ -288,6 +288,20 @@ class Program
 
         // 特殊点
         dictFrames[51] = new POINT { X = 610, Y = 8 };
+        // Use the same picked Ignore Pain point/color as the normal window.
+        string specialLayoutPath = System.IO.Path.Combine(AppContext.BaseDirectory, "diagnostic-layout.json");
+        if (ClassType == PlayerClass.FZ && System.IO.File.Exists(specialLayoutPath))
+        {
+            var specialLayouts = new RotationUS.Diagnostics.ProfileLayouts(AppContext.BaseDirectory);
+            var specialLayout = specialLayouts.Load(RotationUS.Diagnostics.ClassProfiles.Protection,
+                RotationUS.Diagnostics.DiagnosticLayout.Load(specialLayoutPath));
+            if (specialLayout.SpecialEnabled)
+            {
+                dictFrames[51] = new POINT { X = specialLayout.Special.X, Y = specialLayout.Special.Y };
+                FZ.Inst.IgnorePainReferenceColor = specialLayout.SpecialReferenceColor?.ToColor();
+            }
+            else dictFrames.Remove(51);
+        }
 
 
         Dictionary<int, POINT> dictBars = new Dictionary<int, POINT>();
@@ -656,6 +670,23 @@ class Program
         }
 
         return new Rectangle(minX, minY, maxX - minX + 1, maxY - minY + 1);
+    }
+
+    internal static bool ProtectionManualInputPressed() => IsSkipKeyPressed(FZ.Inst.skipKeys);
+
+    internal static void ExecuteProtectionSample(Dictionary<int, Color> frames, Dictionary<int, Color> bars)
+    {
+        dictState.Clear();
+        FZ.Inst.Process(frames, bars, dictState);
+        CheckState(dictState);
+    }
+
+    internal static bool ClassManualInputPressed(RotationUS.Diagnostics.ClassProfile profile) => IsSkipKeyPressed(profile.SkipKeys());
+    internal static void ExecuteClassSample(RotationUS.Diagnostics.ClassProfile profile, Dictionary<int, Color> frames, Dictionary<int, Color> bars)
+    {
+        dictState.Clear();
+        profile.Process(frames, bars, dictState);
+        CheckState(dictState);
     }
 
     private static void CheckState(Dictionary<int, bool> dictState)

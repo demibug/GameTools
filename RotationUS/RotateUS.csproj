@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>annotations</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <StartupObject>RotationUS.Diagnostics.EntryPoint</StartupObject>
+    <AssemblyName>RotationUS</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="*.cs" />
+    <Compile Include="Diagnostics/*.cs" />
+    <None Include="使用说明.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="狂暴战士说明.md" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

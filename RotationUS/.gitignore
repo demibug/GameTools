@@ -1,0 +1,20 @@
+# Runtime exports, screenshots, and logs
+/captures/
+*.log
+*.log.txt
+*.dmp
+
+# Machine-specific calibration and exported-log history
+/diagnostic-layout.json
+/profiles/
+/saved-log-files.json
+/saved-log-files.json.tmp
+
+# Release archives created beside the source
+/RotationUS*.zip
+/RotateUS*.zip
+/RotationUS*.7z
+/RotateUS*.7z
+
+# Shared build / IDE rules live in ../.gitignore.
+# Keep source, project files, documentation, and diagnostic scripts tracked.

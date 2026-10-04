@@ -81,7 +81,7 @@ class FZ
 
 
     private int m_colorIdxIp = 51;
-    private Color m_colorIp = Color.FromArgb(255, 144, 92, 18);
+    public Color? IgnorePainReferenceColor { get; set; }
 
     private int m_keyVirtoryRush = 1;
     private int m_keyShieldWall = 2;
@@ -136,7 +136,7 @@ class FZ
         bool isExecuteRecommend = GetColorBoolean(m_colorIdxExecuteRecommend, dictFrameColors);
         bool isThrowRecommend = GetColorBoolean(m_colorIdxThrowRecommend, dictFrameColors);
         bool isVictoryRusnUsable = GetColorBoolean(m_colorIdxVirtoryRushIsUsable, dictFrameColors);
-        bool isNeedIp = GetColorSpecial(m_colorIdxIp, dictFrameColors, m_colorIp);
+        bool isNeedIp = GetColorSpecial(m_colorIdxIp, dictFrameColors, IgnorePainReferenceColor);
 
         bool isShieldBlockCharge2 = GetColorBoolean(m_colorIdxShieldBlockCharge2, dictBarColors);
         bool isShieldBlockCharge1 = GetColorBoolean(m_colorIdxShieldBlockCharge1, dictBarColors);
@@ -230,11 +230,11 @@ class FZ
         }
 
         // 碎裂投掷
-        //if (!isProcessed && isRange15 && hasAbsorb && isSuilieThrowCd)
-        //{
-        //    isProcessed = true;
-        //    dictStates[m_keySuilieThrow] = true;
-        //}
+        if (!isProcessed && isRange15 && hasAbsorb && isSuilieThrowCd)
+        {
+            isProcessed = true;
+            dictStates[m_keySuilieThrow] = true;
+        }
 
         // 盾牌冲锋
         //if (!isProcessed && isRange10 && isShieldChargeCd)
@@ -305,10 +305,14 @@ class FZ
         return color.R / 255.0f;
     }
 
-    private bool GetColorSpecial(int colorIdx, Dictionary<int, Color> dictColors, Color targetColor)
+    internal static bool IsIgnorePainNeeded(Color color, Color? targetColor)
+        => (color.R == 0 && color.G == 0 && color.B == 0)
+            || (targetColor is Color target && color.R == target.R && color.G == target.G && color.B == target.B);
+
+    private bool GetColorSpecial(int colorIdx, Dictionary<int, Color> dictColors, Color? targetColor)
     {
-        Color color = dictColors[colorIdx];
-        if (color.R == 0 && color.G == 0 && color.B == 0)
+        // An unconfigured external point is unknown, not a black pixel.
+        if (dictColors.TryGetValue(colorIdx, out var color) && IsIgnorePainNeeded(color, targetColor))
         {
             return true;
         }
