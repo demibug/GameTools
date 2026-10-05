@@ -24,7 +24,7 @@ internal static class EntryPoint
     [STAThread]
     private static int Main(string[] args)
     {
-        bool consoleMode = args.Length > 0 && args[0] is "--self-test" or "--ui-smoke" or "--ui-position-smoke" or "--ui-picker-smoke" or "--ui-fury-smoke" or "--profile" or "--log-profile" or "--legacy";
+        bool consoleMode = args.Length > 0 && args[0] is "--self-test" or "--ui-smoke" or "--ui-position-smoke" or "--ui-picker-smoke" or "--ui-floating-smoke" or "--profile" or "--log-profile" or "--legacy";
         try
         {
             if (consoleMode) EnsureConsole();
@@ -37,7 +37,7 @@ internal static class EntryPoint
             if (args.Length == 2 && args[0] == "--ui-smoke") { DiagnosticTests.Render(args[1]); return 0; }
             if (args.Length == 2 && args[0] == "--ui-position-smoke") { DiagnosticTests.Render(args[1], true); return 0; }
             if (args.Length == 2 && args[0] == "--ui-picker-smoke") { DiagnosticTests.RenderPicker(args[1]); return 0; }
-            if (args.Length == 2 && args[0] == "--ui-fury-smoke") { FuryTests.Render(args[1]); return 0; }
+            if (args.Length == 2 && args[0] == "--ui-floating-smoke") { FloatingWindowTests.Render(args[1]); return 0; }
             if (args.SequenceEqual(new[] { "--legacy" })) { global::Program.RunLegacy(); return 0; }
             if (args.Length != 0 && !args.SequenceEqual(new[] { "--diagnose" }))
                 throw new ArgumentException("参数：--diagnose（默认）、--self-test、--profile <坐标 JSON>、--legacy");

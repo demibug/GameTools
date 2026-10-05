@@ -49,7 +49,13 @@ internal sealed class DiagnosticForm : Form
     private readonly Button locate = new() { Text = "定位测试", AutoSize = true };
     private readonly Button run = new() { Text = "开启执行（中键）", AutoSize = true };
     private readonly Label executionStatus = new() { Text = "执行已关闭", AutoSize = true, ForeColor = Color.DarkSlateBlue, Padding = new Padding(0, 5, 0, 0) };
-    private readonly RotationExecution execution = new();
+    private readonly RotationExecution execution;
+    private readonly LoopStatusButton loopStatus = new();
+    private readonly ToolTip loopTooltip = new();
+    private readonly FloatingStatusForm floatingWindow;
+    private bool inFloatingMode;
+    private bool minimizeQueued;
+    private FormWindowState expandedWindowState = FormWindowState.Normal;
     private MouseToggle? mouseToggle;
     private bool modalOperation;
     private string exportDirectory;
@@ -69,12 +75,19 @@ internal sealed class DiagnosticForm : Form
     private double lastLocateScan = -10;
     private bool locationVerified;
     private string previousStatus = "";
-    private string previousFuryDecision = "";
 
-    public DiagnosticForm(bool listenForMouse = true, SavedLogStore? savedLogs = null, ProfileLayouts? profileLayouts = null)
+    public DiagnosticForm(bool listenForMouse = true, SavedLogStore? savedLogs = null, ProfileLayouts? profileLayouts = null,
+        RotationExecution? execution = null)
     {
         this.savedLogs = savedLogs ?? new SavedLogStore(AppContext.BaseDirectory);
         this.profileLayouts = profileLayouts ?? new ProfileLayouts(AppContext.BaseDirectory);
+        this.execution = execution ?? new RotationExecution();
+        var floatingSettings = new FloatingWindowSettings(Path.GetDirectoryName(this.profileLayouts.DiscoveryPath)!);
+        floatingWindow = new FloatingStatusForm(floatingSettings);
+        floatingWindow.ExpandRequested += ExpandFromFloating;
+        floatingWindow.PersistenceError += message => SetStatus(message);
+        this.execution.EnabledChanged += SyncLoopStatus;
+        SyncLoopStatus();
         exportDirectory = this.savedLogs.LastDirectory;
         Text = "RotationUS · 职业执行与点位诊断";
         Font = new Font("Microsoft YaHei UI", 9);
@@ -85,7 +98,7 @@ internal sealed class DiagnosticForm : Form
         Location = new Point(Math.Max(area.Left, area.Left + (area.Width - Width) / 2), area.Top + 170);
         TopMost = true;
         var content = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(10) };
-        content.RowStyles.Add(new(SizeType.Absolute, 112));
+        content.RowStyles.Add(new(SizeType.Absolute, 128));
         content.RowStyles.Add(new(SizeType.Absolute, 52));
         content.RowStyles.Add(settingsHeight);
         content.RowStyles.Add(previewHeight);
@@ -93,6 +106,7 @@ internal sealed class DiagnosticForm : Form
         content.RowStyles.Add(logsHeight);
         Controls.Add(content);
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = true };
+        loopStatus.Click += (_, _) => CollapseToFloating(); toolbar.Controls.Add(loopStatus);
         toolbar.Controls.Add(games);
         toolbar.Controls.Add(Button("刷新游戏", RefreshGames));
         locate.Click += (_, _) => ToggleLocator(); toolbar.Controls.Add(locate);
@@ -163,6 +177,7 @@ internal sealed class DiagnosticForm : Form
         {
             LoadLayout(); RefreshGames(); timer.Start();
             if (this.savedLogs.LoadError is not null) AddLog(this.savedLogs.LoadError);
+            if (floatingSettings.LoadError is not null) AddLog(floatingSettings.LoadError);
             if (listenForMouse)
             {
                 try
@@ -181,11 +196,72 @@ internal sealed class DiagnosticForm : Form
     {
         if (disposing)
         {
+            execution.EnabledChanged -= SyncLoopStatus;
+            floatingWindow.Dispose(); loopTooltip.Dispose();
             execution.Stop(); mouseToggle?.Dispose(); mouseToggle = null;
             timer.Stop(); timer.Dispose(); captureBuffer.Dispose();
             preview.Source = null; captured?.Dispose(); captured = null;
         }
         base.Dispose(disposing);
+    }
+    private void SyncLoopStatus()
+    {
+        loopStatus.LoopEnabled = execution.Enabled;
+        floatingWindow.SetLoopEnabled(execution.Enabled);
+        loopTooltip.SetToolTip(loopStatus, (execution.Enabled ? "循环已激活" : "循环已关闭") + " · 点击收起为悬浮按钮");
+        run.Text = execution.Enabled ? "关闭执行（中键）" : "开启执行（中键）";
+        if (!execution.Enabled) executionStatus.Text = "执行已关闭";
+        timer.Interval = execution.Enabled ? 30 : 100;
+        presentation.Reset();
+    }
+
+    internal void CollapseToFloating()
+    {
+        if (inFloatingMode || modalOperation || !IsHandleCreated) return;
+        var screen = Screen.FromControl(this);
+        if (WindowState != FormWindowState.Minimized) expandedWindowState = WindowState;
+        inFloatingMode = true;
+        Hide();
+        if (WindowState == FormWindowState.Minimized) WindowState = expandedWindowState;
+        floatingWindow.ShowFloating(screen);
+    }
+
+    internal void ExpandFromFloating()
+    {
+        if (!inFloatingMode || IsDisposed) return;
+        inFloatingMode = false;
+        floatingWindow.Hide();
+        presentation.Reset(); lastUnknownReason = "";
+        if (WindowState == FormWindowState.Minimized) WindowState = expandedWindowState;
+        var restoreState = expandedWindowState;
+        Show();
+        // A hidden window can retain native minimized placement even when its managed state is normal.
+        WindowState = restoreState;
+        Activate();
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == 0x0112 && (m.WParam.ToInt64() & 0xFFF0) == 0xF020 && floatingWindow is not null)
+        { CollapseToFloating(); return; } // WM_SYSCOMMAND / SC_MINIMIZE
+        base.WndProc(ref m);
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        if (floatingWindow is null || inFloatingMode) return;
+        if (WindowState == FormWindowState.Minimized && !minimizeQueued && IsHandleCreated)
+        {
+            // Restore only after the native minimize has finished updating its bounds/state.
+            minimizeQueued = true;
+            BeginInvoke((Action)(() =>
+            {
+                minimizeQueued = false;
+                if (!IsDisposed && WindowState == FormWindowState.Minimized) CollapseToFloating();
+            }));
+        }
+        else if (WindowState != FormWindowState.Minimized) expandedWindowState = WindowState;
     }
     private static Button Button(string label, Action action)
     {
@@ -193,7 +269,13 @@ internal sealed class DiagnosticForm : Form
         button.Click += (_, _) => action(); return button;
     }
     private GameWindow SelectedGame => games.SelectedItem as GameWindow ?? throw new InvalidOperationException("未找到游戏窗口，请启动 Wow.exe 后刷新游戏列表。");
-    private Rectangle OwnBounds => Visible && WindowState != FormWindowState.Minimized ? Bounds : Rectangle.Empty;
+    private Rectangle OwnBounds => floatingWindow.Visible ? floatingWindow.Bounds
+        : Visible && WindowState != FormWindowState.Minimized ? Bounds : Rectangle.Empty;
+    private void AvoidFloatingCapture(GameWindow game, Rectangle region, Size size)
+    {
+        if (floatingWindow.Visible)
+            floatingWindow.AvoidCapture(GameCapture.ScreenRegion(game, region, Rectangle.Empty, size));
+    }
     private void RefreshGames()
     {
         int? old = (games.SelectedItem as GameWindow)?.Pid;
@@ -302,7 +384,12 @@ internal sealed class DiagnosticForm : Form
         grid.Rows.Clear(); grid.Columns[1].HeaderText = "定位测试点"; grid.Columns[5].HeaderText = "预期颜色 / 校验结果"; grid.Columns[6].HeaderText = "校验时间";
         preview.LocationMode = true; SetUnknown(reason);
     }
-    private Captured ReadScan(GameWindow game, Size size) => GameCapture.Read(game, new Rectangle(0, 0, size.Width, Math.Min(128, size.Height)), OwnBounds);
+    private Captured ReadScan(GameWindow game, Size size)
+    {
+        var region = new Rectangle(0, 0, size.Width, Math.Min(128, size.Height));
+        AvoidFloatingCapture(game, region, size);
+        return GameCapture.Read(game, region, OwnBounds);
+    }
     private void TickLocator()
     {
         if (clock.Elapsed.TotalSeconds - lastLocateScan < .5) return;
@@ -343,6 +430,7 @@ internal sealed class DiagnosticForm : Form
     }
     private void ShowPositionChecks(DiagnosticLayout found, Captured scan, PointCheck[] checks)
     {
+        if (inFloatingMode) return;
         var displayed = found.Copy(); displayed.SpecialEnabled = false;
         ReplaceCapture(PositionVerification.Crop(scan, found), displayed);
         if (grid.Rows.Count != checks.Length)
@@ -506,6 +594,7 @@ internal sealed class DiagnosticForm : Form
                 samplingBounds = layout.CaptureBounds; samplingLayout = layout;
                 presentation.Reset();
             }
+            AvoidFloatingCapture(game, samplingBounds, size);
             var next = captureBuffer.Read(game, samplingBounds, OwnBounds, size);
             int mode = Colors.Kind(next.At(layout.Markers[0]));
             var nextIdentity = ClassProfiles.Identify(next.At(layout.Markers[1]));
@@ -515,7 +604,7 @@ internal sealed class DiagnosticForm : Form
             string reason = mode == 4 ? "定位图案" : activeProfile is null ? identity.DisplayName : mode != 2 ? "插件尚未输出 / 需重载 / 坐标不匹配" : !alive ? "心跳等待或超过 1.5 秒未变化" : "";
             // Execute from the fresh sample before any table, log or preview work.
             string executionText = activeProfile is null ? "执行已关闭" : execution.Tick(game, layout, next, live, clock.Elapsed.TotalSeconds, activeProfile);
-            if (!presentation.Due(clock.Elapsed.TotalSeconds, WindowState != FormWindowState.Minimized)) return;
+            if (!presentation.Due(clock.Elapsed.TotalSeconds, Visible && !inFloatingMode && WindowState != FormWindowState.Minimized)) return;
             // The preview/export owns a stable copy; it never triggers another screen capture.
             ReplaceCapture(new Captured((Bitmap)next.Image.Clone(), next.Bounds));
             UpdateLiveRows(next, live, reason);
@@ -525,7 +614,6 @@ internal sealed class DiagnosticForm : Form
                 var b = Enumerable.Range(1,50).ToDictionary(i => i, i => next.At(layout.Bars[i-1]));
                 var decision = KBZ.Decide(f,b,FuryBuffs.Read(layout,next.At));
                 string explanation = $"{decision.Branch} · {decision.Reason} · {(decision.Mode.Length > 0 ? decision.Mode : layout.ThunderMode)} · 鲁莽来源=成功施法计时";
-                if (previousFuryDecision != explanation) { AddLog(explanation); previousFuryDecision = explanation; }
                 if (!execution.Enabled) executionStatus.Text = "诊断（执行关闭）：" + explanation;
             }
             int charges = next.At(layout.Bars[1]).R == 255 ? 2 : next.At(layout.Bars[0]).R == 255 ? 1 : 0;
@@ -608,6 +696,7 @@ internal sealed class DiagnosticForm : Form
     private void SetUnknown(string reason)
     {
         executionStatus.Text = execution.Enabled ? "执行等待有效采样" : "执行已关闭";
+        if (inFloatingMode) { SetStatus(reason); return; }
         if (lastUnknownReason == reason) return;
         lastUnknownReason = reason;
         foreach (DataGridViewRow row in grid.Rows)

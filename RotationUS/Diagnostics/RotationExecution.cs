@@ -21,8 +21,19 @@ internal sealed class RotationExecution
         this.execute = execute;
     }
     internal bool Enabled { get; private set; }
-    internal void Start(ClassProfile? profile = null) { manualPauseUntil = 0; runningSpec = (profile ?? ClassProfiles.Protection).SpecId; Enabled = true; }
-    internal void Stop() { Enabled = false; manualPauseUntil = 0; runningSpec = 0; }
+    internal event Action? EnabledChanged;
+    internal void Start(ClassProfile? profile = null)
+    {
+        manualPauseUntil = 0; runningSpec = (profile ?? ClassProfiles.Protection).SpecId;
+        if (Enabled) return;
+        Enabled = true; EnabledChanged?.Invoke();
+    }
+    internal void Stop()
+    {
+        manualPauseUntil = 0; runningSpec = 0;
+        if (!Enabled) return;
+        Enabled = false; EnabledChanged?.Invoke();
+    }
     internal string Tick(GameWindow game, DiagnosticLayout layout, Captured sample, bool live, double now, ClassProfile? profile = null)
     {
         if (!Enabled) return "执行已关闭";

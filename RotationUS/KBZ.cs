@@ -22,12 +22,13 @@ class KBZ
     {
         bool? F(int id) => frames.TryGetValue(id, out var c) ? FuryBuffs.Boolean(c) : null;
         bool? B(int id) => bars.TryGetValue(id, out var c) ? FuryBuffs.Boolean(c) : null;
-        bool? Hp(double limit) => frames.TryGetValue(6, out var c) && c.R == c.G && c.G == c.B ? c.R / 255.0 <= limit : null;
+        bool? Hp(double limit, bool inclusive = true) => frames.TryGetValue(6, out var c) && c.R == c.G && c.G == c.B
+            ? inclusive ? c.R / 255.0 <= limit : c.R / 255.0 < limit : null;
         bool? Skill(int usable, int ready) => F(usable) & F(ready);
         if (F(42) != true) return new(0, "等待狂暴协议有效数据");
         // Utility and requests do not depend on unknown, unrelated DPS buffs.
-        if ((F(3) & Hp(.7) & Skill(14,13) & F(28)) == true) return new(1,"胜利在望：血量≤70%");
-        if ((F(1) & F(5) & Hp(.6) & F(16) & F(28)) == true) return new(18,"袋里乾坤：血量≤60%");
+        if ((F(3) & Hp(.85, false) & Skill(14,13) & F(28)) == true) return new(1,"胜利在望/乘胜追击：血量<85%");
+        if ((F(1) & F(5) & Hp(.8, false) & F(16) & F(28)) == true) return new(18,"袋里乾坤：血量<80%");
         if ((F(4) & Hp(.4) & F(11)) == true) return new(5,"治疗石：血量≤40%");
         if ((F(4) & Hp(.4) & F(12)) == true) return new(6,"治疗药水：血量≤40%");
         if ((F(17) & (!F(1) | !F(18) | !F(15) | !F(3))) == true) return new(29,"取消食物标记");

@@ -9,6 +9,8 @@
 /profiles/
 /saved-log-files.json
 /saved-log-files.json.tmp
+/floating-window.json
+/floating-window.json.tmp
 
 # Release archives created beside the source
 /RotationUS*.zip

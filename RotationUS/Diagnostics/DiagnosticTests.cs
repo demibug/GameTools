@@ -358,7 +358,7 @@ internal static class DiagnosticTests
             foreach (string file in Directory.GetFiles(logsDirectory)) File.Delete(file);
             Directory.Delete(logsDirectory);
         }
-        FuryTests.Run(Check, Reject);
+        count += FloatingWindowTests.Run();
         Console.WriteLine($"PASS: {count} diagnostic checks. Synthetic pixels only; no input sent.");
     }
     public static void Render(string path, bool position = false)

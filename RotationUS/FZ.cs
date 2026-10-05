@@ -146,7 +146,7 @@ class FZ
         bool isProcessed = false;
 
         // 胜利在望
-        if (!isProcessed && isRange5 && hpPct <= 0.7f && isVictoryRushCd && isVictoryRusnUsable)
+        if (!isProcessed && isRange5 && hpPct < 0.7f && isVictoryRushCd && isVictoryRusnUsable)
         {
             isProcessed = true;
             dictStates[m_keyVirtoryRush] = true;
