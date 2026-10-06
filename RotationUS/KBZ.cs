@@ -27,7 +27,7 @@ class KBZ
         bool? Skill(int usable, int ready) => F(usable) & F(ready);
         if (F(42) != true) return new(0, "等待狂暴协议有效数据");
         // Utility and requests do not depend on unknown, unrelated DPS buffs.
-        if ((F(3) & Hp(.85, false) & Skill(14,13) & F(28)) == true) return new(1,"胜利在望/乘胜追击：血量<85%");
+        if ((F(3) & Hp(.75, false) & Skill(14,13) & F(28)) == true) return new(1,"胜利在望/乘胜追击：血量<75%");
         if ((F(1) & F(5) & Hp(.8, false) & F(16) & F(28)) == true) return new(18,"袋里乾坤：血量<80%");
         if ((F(4) & Hp(.4) & F(11)) == true) return new(5,"治疗石：血量≤40%");
         if ((F(4) & Hp(.4) & F(12)) == true) return new(6,"治疗药水：血量≤40%");
