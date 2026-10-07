@@ -50,11 +50,12 @@ internal sealed class RotationExecution
         else frames.Remove(51);
         if (profile.SpecId == 73) FZ.Inst.IgnorePainReferenceColor = layout.SpecialEnabled ? layout.SpecialReferenceColor?.ToColor() : null;
         if (profile.SpecId == 581 && !layout.SpecialEnabled) return "执行等待复仇专精特殊点配置";
+        if (profile.SpecId == 71) WQZ.Inst.Buffs = ArmsBuffs.Read(layout, sample.At);
         if (profile.SpecId == 72) KBZ.Inst.Buffs = FuryBuffs.Read(layout, sample.At);
         // Recheck immediately before sending keys, after assembling this sample.
         if (foreground() != game.Handle) return "执行等待游戏处于前台";
         if (execute is not null) execute(frames, bars);
         else global::Program.ExecuteClassSample(profile, frames, bars);
-        return profile.SpecId == 72 ? $"{KBZ.Inst.LastDecision.Branch} · {KBZ.Inst.LastDecision.Reason} · {(KBZ.Inst.LastDecision.Mode.Length > 0 ? KBZ.Inst.LastDecision.Mode : layout.ThunderMode)}" : "执行已开启 · " + profile.DisplayName;
+        return profile.SpecId == 71 ? $"{WQZ.Inst.LastDecision.Branch} · {WQZ.Inst.LastDecision.Reason}" : profile.SpecId == 72 ? $"{KBZ.Inst.LastDecision.Branch} · {KBZ.Inst.LastDecision.Reason} · {(KBZ.Inst.LastDecision.Mode.Length > 0 ? KBZ.Inst.LastDecision.Mode : layout.ThunderMode)}" : "执行已开启 · " + profile.DisplayName;
     }
 }

@@ -205,7 +205,7 @@ internal static class ProtectionFields
     private static Field[] Build()
     {
         string[] names = { "战斗且可攻击目标", "附近敌人 ≥ 3", "5 码综合条件", "10 码综合条件", "15 码综合条件", "玩家血量", "怒气比例", "战场军官追踪", "队伍或团队", "目标吸收编码", "治疗石可用", "治疗药水可用", "胜利在望冷却", "盾墙冷却", "盾牌冲锋冷却", "挫志怒吼冷却", "雷霆一击冷却", "天神下凡冷却", "碎裂投掷冷却", "拳击冷却", "建议：盾牌猛击", "建议：雷霆一击", "建议：复仇", "建议：斩杀", "建议：英勇投掷", "胜利在望可用", "袋里乾坤冷却", "餐饮供应商追踪", "目标施法或引导" };
-        var fields = Enumerable.Range(1, 50).Select(n => new Field(n.ToString(), n <= names.Length ? names[n - 1] : "未定义", n is 6 or 7 ? ValueKind.Percent : n is >= 13 and <= 20 or 27 ? ValueKind.Cooldown : n <= 29 ? ValueKind.Boolean : ValueKind.Raw)).ToList();
+        var fields = Enumerable.Range(1, 50).Select(n => new Field(n.ToString(), n == 30 ? "怒气≥80（原始值阈值）" : n == 31 ? "盾牌冲锋请求已完成（自身冷却/未学习）" : n == 32 ? "天神请求已完成（自身冷却/未学习）" : n <= names.Length ? names[n - 1] : "未定义", n is >= 30 and <= 32 ? ValueKind.FuryBoolean : n is 6 or 7 ? ValueKind.Percent : n is >= 13 and <= 20 or 27 ? ValueKind.Cooldown : n <= 29 ? ValueKind.Boolean : ValueKind.Raw)).ToList();
         fields.Add(new("B1", "盾牌格挡：至少 1 充能", ValueKind.Boolean, true));
         fields.Add(new("B2", "盾牌格挡：2 充能", ValueKind.Boolean, true));
         fields.Add(new("51", "无视苦痛：特殊判断点", ValueKind.Special));

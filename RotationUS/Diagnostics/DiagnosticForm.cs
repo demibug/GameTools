@@ -27,6 +27,9 @@ internal sealed class DiagnosticForm : Form
     private bool batchingLogs;
     private readonly CheckBox specialEnabled = new() { Text = "启用特殊点 51", AutoSize = true };
     private readonly FuryPointSettings furyPoints = new();
+    private readonly ArmsPointSettings armsPoints = new();
+    private readonly TableLayoutPanel armsSettings = new() { Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Visible=false };
+    private readonly FlowLayoutPanel armsOptions = new() { Dock=DockStyle.Fill,WrapContents=false };
     private readonly FlowLayoutPanel legacySettings = new() { Dock=DockStyle.Fill,WrapContents=true };
     private readonly TableLayoutPanel furySettings = new() { Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Visible=false };
     private readonly FlowLayoutPanel furyOptions = new() { Dock=DockStyle.Fill,WrapContents=false };
@@ -149,6 +152,19 @@ internal sealed class DiagnosticForm : Form
             if(updated.SpecialPoints.TryGetValue(key,out var point)) point.Enabled=false;
             SaveSpecialLayout(updated,key);
         };
+        armsPoints.PickRequested+=key=>PickSpecial(key);
+        armsPoints.SaveRequested+=key=>SaveSpecial(key);
+        armsPoints.DisableRequested+=key=>
+        {
+            if(layout is null || activeProfile?.SpecId!=71) return;
+            StopExecution();var updated=layout.Copy();
+            if(updated.SpecialPoints.TryGetValue(key,out var point)) point.Enabled=false;
+            SaveSpecialLayout(updated,key);
+        };
+        armsSettings.RowStyles.Add(new(SizeType.Absolute,240));
+        armsSettings.RowStyles.Add(new(SizeType.Percent,100));
+        armsSettings.Controls.Add(armsPoints,0,0);
+        armsSettings.Controls.Add(armsOptions,0,1);
         furySettings.RowStyles.Add(new(SizeType.Absolute,180));
         furySettings.RowStyles.Add(new(SizeType.Percent,100));
         furySettings.Controls.Add(furyPoints,0,0);
@@ -156,7 +172,7 @@ internal sealed class DiagnosticForm : Form
         furyOptions.Controls.Add(thunderMode);
         furySettings.Controls.Add(furyOptions,0,1);
         var settingsHost=new Panel {Dock=DockStyle.Fill};
-        settingsHost.Controls.Add(settings);settingsHost.Controls.Add(furySettings);
+        settingsHost.Controls.Add(settings);settingsHost.Controls.Add(furySettings);settingsHost.Controls.Add(armsSettings);
         content.Controls.Add(settingsHost, 0, 2);
         var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.FromArgb(245, 247, 250) };
         scroll.Controls.Add(preview); content.Controls.Add(scroll, 0, 3);
@@ -306,11 +322,13 @@ internal sealed class DiagnosticForm : Form
         bool special = activeProfile?.HasSpecial == true;
         specialEnabled.Enabled = specialX.Enabled = specialY.Enabled = pickSpecial.Enabled = special;
         bool fury = activeProfile?.SpecId == 72;
-        furySettings.Visible=fury;legacySettings.Visible=!fury;thunderMode.Visible=fury;
-        settingsHeight.Height=fury?218:100;previewHeight.Height=fury?60:125;logsHeight.Height=fury?110:155;
-        Control executionParent=fury?furyOptions:legacySettings;
+        bool arms = activeProfile?.SpecId == 71;
+        furySettings.Visible=fury;armsSettings.Visible=arms;legacySettings.Visible=!fury&&!arms;thunderMode.Visible=fury;
+        settingsHeight.Height=arms?278:fury?218:100;previewHeight.Height=fury||arms?60:125;logsHeight.Height=fury||arms?110:155;
+        Control executionParent=arms?armsOptions:fury?furyOptions:legacySettings;
         if(executionStatus.Parent!=executionParent) executionParent.Controls.Add(executionStatus);
         furyPoints.LoadSettings(fury?layout:null,committedFuryKey);
+        armsPoints.LoadSettings(arms?layout:null,committedFuryKey);
         if (layout is null) return;
         updatingControls = true;
         specialEnabled.Text = "启用特殊点 51";
@@ -450,7 +468,7 @@ internal sealed class DiagnosticForm : Form
     }
     private void SaveSpecial(string? furyKey=null)
     {
-        var pending=furyKey is null?pendingSpecialPick:furyPoints.Rows[furyKey].Pending;
+        var pending=furyKey is null?pendingSpecialPick:activeProfile?.SpecId==71?armsPoints.Rows[furyKey].Pending:furyPoints.Rows[furyKey].Pending;
         if (updatingControls || modalOperation || pending is not { } selected) return;
         StopExecution();
         try
@@ -466,7 +484,7 @@ internal sealed class DiagnosticForm : Form
                 InvalidateSpecialPick();
                 throw new InvalidOperationException("职业 / 专精已变化，请在当前职业重新取点。");
             }
-            SaveSpecialLayout(furyKey is null?BuildSpecialLayout(selected):furyPoints.BuildLayout(layout,furyKey),furyKey);
+            SaveSpecialLayout(furyKey is null?BuildSpecialLayout(selected):activeProfile?.SpecId==71?armsPoints.BuildLayout(layout,furyKey):furyPoints.BuildLayout(layout,furyKey),furyKey);
         }
         catch (Exception e) { SetUnknown(e.Message); }
     }
@@ -482,7 +500,8 @@ internal sealed class DiagnosticForm : Form
         if (updatingControls) return;
         pendingSpecialPick = null; saveSpecial.Enabled = false;
         furyPoints.InvalidatePicks();
-        if (layout is not null && activeProfile?.SpecId != 72)
+        armsPoints.InvalidatePicks();
+        if (layout is not null && activeProfile?.SpecId is not (71 or 72))
             specialColor.Text = $"已保存取色 RGB：{layout.SpecialReferenceColor?.ToString() ?? "未采集"}；请截图取点 / 取色后保存。";
     }
     internal void StageSpecialPick(PickedPixel selected)
@@ -502,14 +521,14 @@ internal sealed class DiagnosticForm : Form
         if (activeProfile is null || !activeProfile.HasSpecial) throw new InvalidOperationException("当前职业没有特殊点配置。");
         profileLayouts.Save(activeProfile, updated); layout = updated; ApplyControls(furyKey);
         samplingLayout = null; presentation.Reset();
-        AddLog(activeProfile.SpecId == 72 ? $"已保存 {(furyKey is null?"狂暴特殊点":FuryBuffs.Label(furyKey))} · {layout.ThunderMode} · {layoutPath}" : $"{activeProfile.DisplayName}特殊点 51：({updated.Special.X}, {updated.Special.Y})，取色 RGB {updated.SpecialReferenceColor?.ToString() ?? "未采集"}，{(updated.SpecialEnabled ? "启用" : "停用")}；已保存 {layoutPath}");
+        AddLog(activeProfile.SpecId == 71 ? $"已保存武器特殊点：{(furyKey is null ? "武器光环" : ArmsBuffs.Label(furyKey))} · {layoutPath}" : activeProfile.SpecId == 72 ? $"已保存 {(furyKey is null?"狂暴特殊点":FuryBuffs.Label(furyKey))} · {layout.ThunderMode} · {layoutPath}" : $"{activeProfile.DisplayName}特殊点 51：({updated.Special.X}, {updated.Special.Y})，取色 RGB {updated.SpecialReferenceColor?.ToString() ?? "未采集"}，{(updated.SpecialEnabled ? "启用" : "停用")}；已保存 {layoutPath}");
         lastValues.Clear(); changedTimes.Clear();
         frozen = false; pause.Text = "暂停查看"; heartbeat.Reset();
     }
     private async void PickSpecial(string? furyKey=null)
     {
         if (modalOperation) return;
-        if(furyKey is null) InvalidateSpecialPick(); else furyPoints.InvalidatePick(furyKey);
+        if(furyKey is null) InvalidateSpecialPick(); else if(activeProfile?.SpecId==71) armsPoints.InvalidatePick(furyKey); else furyPoints.InvalidatePick(furyKey);
         StopExecution();
         modalOperation = true; timer.Stop();
         try
@@ -529,11 +548,12 @@ internal sealed class DiagnosticForm : Form
             if (ClassProfiles.Identify(screenshot.At(layout.Markers[1])) != identity)
                 throw new InvalidOperationException("职业 / 专精已变化，请等待识别后重新取点。");
             using var picker = new SpecialPointPicker(screenshot.Image, bounds, activeProfile.DisplayName,
-                furyKey is not null ? $"{FuryBuffs.Label(furyKey)}："+(FuryBuffs.UsesTimeColor(furyKey)?"请在临近结束时取非黑参考色；纯黑=缺失":"纯黑=缺失；任何非黑=存在；所取颜色仅记录") : activeProfile.SpecId == 73 ? "纯黑或等于取色 RGB 时，判定需要施放" : "沿用原复仇代码的非黑像素判断");
+                furyKey is not null && activeProfile.SpecId == 71 ? $"{ArmsBuffs.Label(furyKey)}：{ArmsBuffs.Rule(furyKey)}；请采集指定状态的参考色" : furyKey is not null ? $"{FuryBuffs.Label(furyKey)}："+(FuryBuffs.UsesTimeColor(furyKey)?"请在临近结束时取非黑参考色；纯黑=缺失":"纯黑=缺失；任何非黑=存在；所取颜色仅记录") : activeProfile.SpecId == 73 ? "纯黑或等于取色 RGB 时，判定需要施放" : "沿用原复仇代码的非黑像素判断");
             if (picker.ShowDialog() != DialogResult.OK || picker.Selection is not { } selected) return;
             if (GameCapture.ClientSize(game) != size)
                 throw new InvalidOperationException("选点过程中游戏尺寸变化，请重新选取。");
             if(furyKey is null) StageSpecialPick(selected);
+            else if(activeProfile.SpecId==71) { armsPoints.Stage(furyKey,selected);SetStatus(ArmsBuffs.Label(furyKey)+"取点完成，请点击该行的保存。"); }
             else { furyPoints.Stage(furyKey,selected);SetStatus(FuryBuffs.Label(furyKey)+"取点完成，请点击该行的保存。"); }
         }
         catch (Exception e) { if (!IsDisposed) SetStatus("取点失败：" + e.Message); }
@@ -616,10 +636,17 @@ internal sealed class DiagnosticForm : Form
                 string explanation = $"{decision.Branch} · {decision.Reason} · {(decision.Mode.Length > 0 ? decision.Mode : layout.ThunderMode)} · 鲁莽来源=成功施法计时";
                 if (!execution.Enabled) executionStatus.Text = "诊断（执行关闭）：" + explanation;
             }
+            if (live && activeProfile?.SpecId == 71 && !execution.Enabled)
+            {
+                var f = Enumerable.Range(1,50).ToDictionary(i => i, i => next.At(layout.Frames[i-1]));
+                var b = Enumerable.Range(1,50).ToDictionary(i => i, i => next.At(layout.Bars[i-1]));
+                var decision = WQZ.Decide(f,b,ArmsBuffs.Read(layout,next.At));
+                executionStatus.Text = $"诊断（执行关闭）：{decision.Branch} · {decision.Reason}";
+            }
             int charges = next.At(layout.Bars[1]).R == 255 ? 2 : next.At(layout.Bars[0]).R == 255 ? 1 : 0;
             string extra = activeProfile?.SpecId == 73 ? $" · 盾牌格挡充能 {charges}" : "";
             SetStatus(live ? $"{identity.DisplayName} · 心跳正常{extra} · {size.Width}×{size.Height} · {capturedAt:HH:mm:ss.fff}" : $"{reason} · 原始画面 {capturedAt:HH:mm:ss.fff}", false);
-            if (execution.Enabled || activeProfile?.SpecId != 72 || !live) executionStatus.Text = executionText;
+            if (execution.Enabled || activeProfile?.SpecId is not (71 or 72) || !live) executionStatus.Text = executionText;
         }
         catch (Exception e)
         {
@@ -638,9 +665,9 @@ internal sealed class DiagnosticForm : Form
             {
                 var field = fields[index]; var row = grid.Rows[index];
                 SamplePoint? point = FuryBuffs.Point(layout, field);
-                if (point is null) { row.Cells[2].Value = "未设置"; row.Cells[4].Value = "—"; row.Cells[5].Value = layout.SpecId==72?"未知 · 特殊点未配置/停用":"未启用（手动校准）"; row.Cells[3].Style.BackColor = Color.White; continue; }
+                if (point is null) { row.Cells[2].Value = "未设置"; row.Cells[4].Value = "—"; row.Cells[5].Value = layout.SpecId is 71 or 72?"未知 · 特殊点未配置/停用":"未启用（手动校准）"; row.Cells[3].Style.BackColor = Color.White; continue; }
                 var color = next.At(point);
-                string rgb = Colors.Rgb(color), value = live ? FuryBuffs.Decode(layout, field, color,next.At) : $"未知 · {reason}";
+                string rgb = Colors.Rgb(color), value = live ? layout.SpecId == 71 ? ArmsBuffs.Decode(layout, field, color,next.At) : FuryBuffs.Decode(layout, field, color,next.At) : $"未知 · {reason}";
                 string coordinates = $"{point.X}, {point.Y}";
                 if (!Equals(row.Cells[2].Value, coordinates)) row.Cells[2].Value = coordinates;
                 string signature = $"{rgb}|{value}";
@@ -794,10 +821,11 @@ internal sealed class DiagnosticForm : Form
             var field = fields[i]; var point = FuryBuffs.Point(layout!, field);
             if (point is null) continue;
             var color = image.GetPixel(point.X, point.Y); var row = grid.Rows[i];
-            row.Cells[2].Value = $"{point.X}, {point.Y}"; row.Cells[3].Style.BackColor = color; row.Cells[4].Value = Colors.Rgb(color); row.Cells[5].Value = FuryBuffs.Decode(layout!, field, color,p=>image.GetPixel(p.X,p.Y));
+            row.Cells[2].Value = $"{point.X}, {point.Y}"; row.Cells[3].Style.BackColor = color; row.Cells[4].Value = Colors.Rgb(color); row.Cells[5].Value = layout!.SpecId == 71 ? ArmsBuffs.Decode(layout, field, color,p=>image.GetPixel(p.X,p.Y)) : FuryBuffs.Decode(layout, field, color,p=>image.GetPixel(p.X,p.Y));
         }
         SetStatus("合成画面，仅供窗口布局检查 · 当前专精字段与原始 RGB");
-        if (activeProfile?.SpecId == 72) AddLog("[S:enrage] 激怒：存在 · 临近结束 · 固定点；鲁莽=成功施法计时；雷霆配置=" + layout!.ThunderMode);
+        if (activeProfile?.SpecId == 71) AddLog("武器七点：按用户参考色解码；当前为合成画面。");
+        else if (activeProfile?.SpecId == 72) AddLog("[S:enrage] 激怒：存在 · 临近结束 · 固定点；鲁莽=成功施法计时；雷霆配置=" + layout!.ThunderMode);
         else { AddLog("[21] 建议：盾牌猛击：否 → 是"); AddLog("[7] 怒气比例：45.1% → 62.7%"); }
     }
     internal void FreezeForTesting() { StopExecution(); timer.Stop(); frozen = true; }

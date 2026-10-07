@@ -54,7 +54,6 @@ class FZ
     private int m_colorIdxHp = 6;
     private int m_colorIdxMp = 7;
     private int m_colorIdxJunGuanMark = 8;
-    private int m_colorIdxIsInTeam = 9;
     private int m_colorIdxHasAbsorb = 10;
     private int m_colorIdxPotionHealStone = 11;
     private int m_colorIdxPotionHp = 12;
@@ -113,7 +112,6 @@ class FZ
         float hpPct = GetColorFloat(m_colorIdxHp, dictFrameColors);
         float mpPct = GetColorFloat(m_colorIdxMp, dictFrameColors);
         bool isJunGuanMark = GetColorBoolean(m_colorIdxJunGuanMark, dictFrameColors);
-        bool isInTeam = GetColorBoolean(m_colorIdxIsInTeam, dictFrameColors);
         bool hasAbsorb = GetColorBoolean(m_colorIdxHasAbsorb, dictFrameColors);
         bool isFoodMark = GetColorBoolean(m_colorIdxFoodMark, dictFrameColors);
         bool isTargetCasting = GetColorBoolean(m_colorIdxIsTargetCasting, dictFrameColors);
@@ -137,6 +135,12 @@ class FZ
         bool isThrowRecommend = GetColorBoolean(m_colorIdxThrowRecommend, dictFrameColors);
         bool isVictoryRusnUsable = GetColorBoolean(m_colorIdxVirtoryRushIsUsable, dictFrameColors);
         bool isNeedIp = GetColorSpecial(m_colorIdxIp, dictFrameColors, IgnorePainReferenceColor);
+        bool isHighRage = dictFrameColors.TryGetValue(30, out var rageThreshold)
+            && rageThreshold.R == 255 && rageThreshold.G == 255 && rageThreshold.B == 255;
+        bool? isShieldChargeConsumed = dictFrameColors.TryGetValue(31, out var chargeConsumed)
+            ? RotationUS.Diagnostics.FuryBuffs.Boolean(chargeConsumed) : null;
+        bool? isAvatarConsumed = dictFrameColors.TryGetValue(32, out var avatarConsumed)
+            ? RotationUS.Diagnostics.FuryBuffs.Boolean(avatarConsumed) : null;
 
         bool isShieldBlockCharge2 = GetColorBoolean(m_colorIdxShieldBlockCharge2, dictBarColors);
         bool isShieldBlockCharge1 = GetColorBoolean(m_colorIdxShieldBlockCharge1, dictBarColors);
@@ -194,6 +198,14 @@ class FZ
             dictStates[m_keyInterrupt] = true;
         }
 
+        // 无视苦痛防溢出：原始怒气达到80，不依赖队伍、吸收点位或公共冷却。
+        // 保留治疗、物品与打断优先，放在盾牌格挡和所有输出动作之前。
+        if (!isProcessed && isRange10 && isHighRage)
+        {
+            isProcessed = true;
+            dictStates[m_keyIp] = true;
+        }
+
         // 盾牌格挡
         if (!isProcessed && isRange10 && isShieldBlockCharge2 && mpPct >= 0.33f)
         {
@@ -208,22 +220,22 @@ class FZ
             dictStates[m_keyIp] = true;
         }
 
-        // 无视痛苦(怒气太多)
-        if (!isProcessed && isRange10 && isInTeam && mpPct >= 0.8f)
-        {
-            isProcessed = true;
-            dictStates[m_keyIp] = true;
-        }
-
         // 天神下凡
-        if (!isProcessed && isJunGuanMark && isRange5 && isAvatarCd && !isThunderClapCd)
+        if (!isProcessed && isJunGuanMark && isRange5 && isAvatarCd && isAvatarConsumed == false && !isThunderClapCd)
         {
             isProcessed = true;
             dictStates[m_keyAvatar] = true;
         }
 
-        // 取消军官标记
-        if (!isProcessed && isJunGuanMark && (!isAvatarCd || !isCombat))
+        // 盾牌冲锋与天神共用军官标记；无标记不自动释放。
+        if (!isProcessed && isJunGuanMark && isRange10 && isShieldChargeCd && isShieldChargeConsumed == false)
+        {
+            isProcessed = true;
+            dictStates[m_keyShieldCharge] = true;
+        }
+
+        // 两个请求均确认进入自身冷却（或未学习）后才清理，公共CD不算完成。
+        if (!isProcessed && isJunGuanMark && (!isCombat || isAvatarConsumed == true && isShieldChargeConsumed == true))
         {
             isProcessed = true;
             dictStates[m_keyCancelJunGuan] = true;
@@ -235,13 +247,6 @@ class FZ
             isProcessed = true;
             dictStates[m_keySuilieThrow] = true;
         }
-
-        // 盾牌冲锋
-        //if (!isProcessed && isRange10 && isShieldChargeCd)
-        //{
-        //    isProcessed = true;
-        //    dictStates[m_keyShieldCharge] = true;
-        //}
 
         // 挫志怒吼
         if (!isProcessed && isRange5 && isCuoZhiCd)

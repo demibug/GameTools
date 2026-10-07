@@ -34,13 +34,14 @@ internal sealed class ProfileLayouts
         else
         {
             result = geometry.Copy();
+            if (geometry.SpecId != profile.SpecId) result.SpecialPoints.Clear();
             // Only migrate the previous protection-warrior special point to protection.
             if (profile.SpecId != 73 || geometry.SpecId is not (0 or 73))
             { result.SpecialEnabled = false; result.SpecialReferenceColor = null; result.Special = new(610, 8); }
         }
         result.SpecId = profile.SpecId;
         if (!profile.HasSpecial) { result.SpecialEnabled = false; result.SpecialReferenceColor = null; }
-        if (profile.SpecId != 72) result.SpecialPoints.Clear();
+        if (profile.SpecId is not (71 or 72)) result.SpecialPoints.Clear();
         else result.SpecialEnabled = false;
         result.Validate(); return result;
     }

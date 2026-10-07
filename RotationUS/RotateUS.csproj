@@ -14,5 +14,6 @@
     <Compile Include="Diagnostics/*.cs" />
     <None Include="使用说明.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Include="狂暴战士说明.md" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="武器战士说明.md" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

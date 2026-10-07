@@ -24,13 +24,14 @@ internal static class EntryPoint
     [STAThread]
     private static int Main(string[] args)
     {
-        bool consoleMode = args.Length > 0 && args[0] is "--self-test" or "--ui-smoke" or "--ui-position-smoke" or "--ui-picker-smoke" or "--ui-floating-smoke" or "--profile" or "--log-profile" or "--legacy";
+        bool consoleMode = args.Length > 0 && args[0] is "--self-test" or "--ui-smoke" or "--ui-position-smoke" or "--ui-picker-smoke" or "--ui-floating-smoke" or "--ui-arms-smoke" or "--profile" or "--log-profile" or "--legacy";
         try
         {
             if (consoleMode) EnsureConsole();
             Application.SetHighDpiMode(HighDpiMode.PerMonitorV2);
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            if (args.Length == 2 && args[0] == "--ui-arms-smoke") { ArmsTests.Render(args[1]); return 0; }
             if (args.SequenceEqual(new[] { "--self-test" })) { DiagnosticTests.Run(); return 0; }
             if (args.Length == 2 && args[0] == "--profile") { PerformanceProbe.Run(args[1]); return 0; }
             if (args.SequenceEqual(new[] { "--log-profile" })) { PerformanceProbe.RunLogs(); return 0; }

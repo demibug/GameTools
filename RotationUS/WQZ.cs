@@ -1,289 +1,95 @@
+#nullable enable
 using System.Drawing;
-using System.Drawing.Printing;
+using RotationUS.Diagnostics;
+
+internal sealed record ArmsDecision(int Key, string Reason, string Branch = "通用");
 
 class WQZ
 {
-    #region Singleton
-    private static WQZ _inst;
-    private WQZ() { }
-
-    public static WQZ Inst
+    public static WQZ Inst { get; } = new();
+    public int[] skipKeys = FZ.Inst.skipKeys;
+    internal ArmsBuffs Buffs { get; set; } = new();
+    internal ArmsDecision LastDecision { get; private set; } = new(0, "等待有效采样");
+    public void Process(Dictionary<int, Color> frames, Dictionary<int, Color> bars, Dictionary<int, bool> states)
     {
-        get
-        {
-            if (_inst == null)
-            {
-                _inst = new WQZ();
-            }
-            return _inst;
-        }
+        LastDecision = Decide(frames, bars, Buffs);
+        if (LastDecision.Key != 0) states[LastDecision.Key] = true;
     }
-    #endregion
-
-    // ��Ҫ�������ļ����������
-    public int[] skipKeys = {
-        //0xC0, // ` ��
-        //0x31, // 1
-        //0x32, // 2
-        0x33, // 3
-        //0x34, // 4
-        0x35, // 5
-        0x36, // 6
-        //0x51, // Q
-        //0x45, // E
-        //0x52, // R
-        0x54, // T
-        0x46, // F
-        //0x47, // G
-        //0x5A, // Z
-        0x58, // X
-        //0x43, // C
-        //0x56, // V
-        //0x42, // B
-        // ������д��ĸ����ϼ�
-        //0x31 + 0x20, 0x32 + 0x20, 0x33 + 0x20, 0x34 + 0x20, 0x35 + 0x20, 0x36 + 0x20, // Shift + 1 2 3 4 5 6
-        //0x51 + 0x20, 0x45 + 0x20, 0x52 + 0x20, 0x54 + 0x20, 0x46 + 0x20, 0x47 + 0x20, // Shift + Q E R T F G
-        //0x5A + 0x20, 0x58 + 0x20, 0x43 + 0x20, 0x56 + 0x20, 0x42 + 0x20 // Shift + Z X C V B
-    };
-
-    private int m_colorIdxIsCombat = 1;
-    private int m_colorIdxIsAoe = 2;
-    private int m_colorIdxRange5 = 3;
-    private int m_colorIdxRange10 = 4;
-    private int m_colorIdxRange15 = 5;
-    private int m_colorIdxHp = 6;
-    private int m_colorIdxMp = 7;
-    private int m_colorIdxTargetHp = 8;
-    private int m_colorIdxJunGuanMark = 9;
-    private int m_colorIdxHasAbsorb = 10;
-    private int m_colorIdxPotionHealStone = 11;
-    private int m_colorIdxPotionHp = 12;
-    private int m_colorIdxAvatarCD = 13;
-    private int m_colorIdxColossusSmashCD = 14;
-    private int m_colorIdxSweepingStrikeCD = 15;
-    private int m_colorIdxBladestormCD = 16;
-    private int m_colorIdxMortalStrikeCD = 17;
-    private int m_colorIdxWreckThrowCD = 18;
-    private int m_colorIdxRendRecommend = 20;
-    private int m_colorIdxAvatarRecommend = 21;
-    private int m_colorIdxThrowRecommend = 27;
-
-    private int m_colorIdxRendUsable = 22;
-    private int m_colorIdxMortalStrikeUsable = 23;
-    private int m_colorIdxExecuteUsable = 24;
-    private int m_colorIdxSlamUsable = 25;
-    private int m_colorIdxVictoryRushUsable = 26;
-
-    private int m_colorIdxOverpowerCharge1 = 1;
-    private int m_colorIdxOverpowerCharge2 = 2;
-
-
-    private int m_colorIdxIp = 31;
-    private Color m_colorIp = Color.FromArgb(255, 144, 92, 18);
-
-    private int m_keyVirtoryRush = 1;
-    private int m_keyJianRen = 2;
-    private int m_keyAvatar = 3;
-    private int m_keyCancelJunGuan = 4;
-    private int m_keyHealStone = 5;
-    private int m_keyHpPotion = 6;
-    private int m_keyRend = 7;
-    private int m_keyColossusSmash = 8;
-    private int m_keySweepStrike = 9;
-    private int m_keyMortalStrike = 10;
-    private int m_keyBladestrom = 11;
-    private int m_keyExecute = 12;
-    private int m_keyOverpower = 13;
-    private int m_keyWreckThrow = 14;
-    private int m_keySlam = 15;
-    private int m_keyThrow = 16;
-    public void Process(Dictionary<int, Color> dictFrameColors, Dictionary<int, Color> dictBarColors, Dictionary<int, bool> dictStates)
+    internal static ArmsDecision Decide(Dictionary<int, Color> frames, Dictionary<int, Color> bars, ArmsBuffs buff)
     {
-        bool isCombat = GetColorBoolean(m_colorIdxIsCombat, dictFrameColors);
-        bool isAoe = GetColorBoolean(m_colorIdxIsAoe, dictFrameColors);
-        bool isRange15 = GetColorBoolean(m_colorIdxRange15, dictFrameColors);
-        bool isRange10 = GetColorBoolean(m_colorIdxRange10, dictFrameColors);
-        bool isRange5 = GetColorBoolean(m_colorIdxRange5, dictFrameColors);
-        float hpPct = GetColorFloat(m_colorIdxHp, dictFrameColors);
-        float mpPct = GetColorFloat(m_colorIdxMp, dictFrameColors);
-        float targetHpPct = GetColorFloat(m_colorIdxTargetHp, dictFrameColors);
-        bool isJunGuanMark = GetColorBoolean(m_colorIdxJunGuanMark, dictFrameColors);
-        bool hasAbsorb = GetColorBoolean(m_colorIdxHasAbsorb, dictFrameColors);
-
-        bool isHealStoneUsable = GetColorBoolean(m_colorIdxPotionHealStone, dictFrameColors);
-        bool isHpPotionUsable = GetColorBoolean(m_colorIdxPotionHp, dictFrameColors);
-        bool isAvatarCd = GetColorBoolean(m_colorIdxAvatarCD, dictFrameColors);
-        bool isColossusSmashCd = GetColorBoolean(m_colorIdxColossusSmashCD, dictFrameColors);
-        bool isSweepingStrikeCd = GetColorBoolean(m_colorIdxSweepingStrikeCD, dictFrameColors);
-        bool isBladestormCd = GetColorBoolean(m_colorIdxBladestormCD, dictFrameColors);
-        bool isMortalStrikeCd = GetColorBoolean(m_colorIdxMortalStrikeCD, dictFrameColors);
-        bool isWreckThrowCd = GetColorBoolean(m_colorIdxWreckThrowCD, dictFrameColors);
-
-        bool isRendRecommend = GetColorBoolean(m_colorIdxRendRecommend, dictFrameColors);
-        bool isAvatarRecommend = GetColorBoolean(m_colorIdxAvatarRecommend, dictFrameColors);
-        bool isThrowRecommend = GetColorBoolean(m_colorIdxThrowRecommend, dictFrameColors);
-
-        bool isRendUsable = GetColorBoolean(m_colorIdxRendUsable, dictFrameColors);
-        bool isMortalStrikeUsable = GetColorBoolean(m_colorIdxMortalStrikeUsable, dictFrameColors);
-        bool isExecuteUsable = GetColorBoolean(m_colorIdxExecuteUsable, dictFrameColors);
-        bool isSlamUsable = GetColorBoolean(m_colorIdxSlamUsable, dictFrameColors);
-        bool isVictoryRushUsable = GetColorBoolean(m_colorIdxVictoryRushUsable, dictFrameColors);
-
-        bool isOverpowerCharge2 = GetColorBoolean(m_colorIdxOverpowerCharge2, dictBarColors);
-        bool isOverpowerCharge1 = GetColorBoolean(m_colorIdxOverpowerCharge1, dictBarColors);
-        //Console.WriteLine("isShieldBlockCharge2 " + isShieldBlockCharge2 + " isShieldBlockCharge1 " + isShieldBlockCharge1 + " isShieldBlockCharge0 " + isShieldBlockCharge0);
-
-        bool isProcessed = false;
-
-        // ʤ������
-        if (!isProcessed && isRange10 && hpPct <= 0.7f && isVictoryRushUsable)
+        bool? F(int id) => frames.TryGetValue(id, out var c) ? FuryBuffs.Boolean(c) : null;
+        bool? B(int id) => bars.TryGetValue(id, out var c) ? FuryBuffs.Boolean(c) : null;
+        bool? Hp(double limit, bool inclusive = true) => frames.TryGetValue(6, out var c) && c.R == c.G && c.G == c.B
+            ? inclusive ? c.R / 255.0 <= limit : c.R / 255.0 < limit : null;
+        bool? Skill(int usable, int ready) => F(usable) & F(ready);
+        if (F(39) != true) return new(0, "等待武器协议有效数据");
+        if (F(50) != true) return new(0, "武器通用字段未加载，请在游戏执行 /reload");
+        if ((F(4) & F(43) & Skill(32,19)) == true) return new(2,"剑在人在：血量<50%");
+        if ((F(3) & Hp(.75,false) & Skill(31,21) & F(20)) == true) return new(1,"胜利在望/乘胜追击：血量<75%");
+        if ((F(1) & F(5) & Hp(.8,false) & F(47) & F(20)) == true) return new(18,"袋里乾坤：血量<80%");
+        if ((F(4) & Hp(.4) & F(11)) == true) return new(5,"治疗石：血量≤40%");
+        if ((F(4) & Hp(.4) & F(12)) == true) return new(6,"治疗药水：血量≤40%");
+        if ((F(44) & (!F(1) | !F(45) | !F(46) | !F(3))) == true) return new(29,"取消食物标记");
+        if ((F(44) & F(1) & F(45) & F(46) & F(3)) == true) return new(4,"拳击：食物标记请求");
+        // Arms has Avatar only; reuse Fury's request/cooldown-confirmation pattern.
+        if ((F(48) & (!F(1) | F(49))) == true) return new(28,"取消军官：脱战或天神自身冷却");
+        if ((F(48) & F(3) & Skill(22,13)) == true) return new(3,"天神下凡：军官标记请求");
+        if ((F(5) & F(10) & F(18) & F(20)) == true) return new(15,"碎裂投掷：目标吸收");
+        if (F(3) == false) return (F(5) & F(40) & F(20)) == true ? new(16,"英勇投掷：内置建议兜底") : new(0,"无近战输出条件");
+        if ((F(3) & F(20)) != true) return new(0,"等待距离/施法条件或公共冷却");
+        if (F(2) is null) return new(0,"等待敌人数");
+        bool aoe = F(2) == true;
+        if (!aoe && F(42) is null) return new(0,"等待目标血量阈值");
+        bool executePhase = !aoe && F(42) == true;
+        string branch = aoe ? "多目标" : executePhase ? "单体斩杀" : "单体";
+        bool? smash=Skill(23,14), sweep=Skill(24,15), blade=Skill(25,16);
+        bool? mortal=Skill(26,17), cleave=Skill(27,33), execute=Skill(28,34), slam=Skill(30,36);
+        bool? overpower=F(29) & (F(38) == true ? B(1) : null);
+        bool? rendTenNeeded=!buff.RendTen.Present | buff.RendTen.Expiring;
+        bool? rendFiveNeeded=!buff.RendFive.Present | buff.RendFive.Expiring;
+        var rules = new List<(bool? Condition, int Key, string Why)>();
+        void Add(bool? condition, int key, string why) => rules.Add((condition,key,why));
+        if (aoe)
         {
-            isProcessed = true;
-            dictStates[m_keyVirtoryRush] = true;
+            Add(sweep,9,"横扫攻击");
+            Add(cleave & !buff.RendTen.Present,12,"顺劈斩：补撕裂");
+            Add(smash,8,"巨人打击");
+            Add(cleave & buff.Collateral.Expiring,12,"顺劈斩：间接伤害三层");
+            Add(blade,7,"剑刃风暴");
+            Add(execute & buff.SuddenDeath.Expiring,14,"斩杀：猝死两层");
+            Add(cleave,12,"顺劈斩");
+            Add(overpower & B(2),10,"压制：两充能");
+            Add(execute & buff.SuddenDeath.Present,14,"斩杀：猝死存在");
+            Add(overpower,10,"压制"); Add(execute,14,"斩杀");
+            Add(mortal,11,"致死打击"); Add(slam,13,"猛击技能族兜底");
         }
-
-        // ����ʯ
-        if (!isProcessed && isRange10 && hpPct <= 0.4f && isHealStoneUsable)
+        else if (executePhase)
         {
-            isProcessed = true;
-            dictStates[m_keyHealStone] = true;
-        }
-
-        // Ѫƿ
-        if (!isProcessed && isRange10 && hpPct <= 0.4f && isHpPotionUsable)
-        {
-            isProcessed = true;
-            dictStates[m_keyHpPotion] = true;
-        }
-
-        // wreck throw
-        if (!isProcessed && isRange15 && isWreckThrowCd && hasAbsorb)
-        {
-            isProcessed = true;
-            dictStates[m_keyWreckThrow] = true;
-        }
-
-        // rend
-        if (!isProcessed && isRange10 && isRendRecommend && isRendUsable)
-        {
-            isProcessed = true;
-            dictStates[m_keyRend] = true;
-        }
-
-        // avatar
-        if (!isProcessed && isRange10 && isAvatarRecommend && isColossusSmashCd)
-        {
-            isProcessed = true;
-            dictStates[m_keyAvatar] = true;
-        }
-
-        // colossus smash
-        if (!isProcessed && isRange10 && isColossusSmashCd)
-        {
-            isProcessed = true;
-            dictStates[m_keyColossusSmash] = true;
-        }
-
-        // sweeping strike
-        if (!isProcessed && isRange10 && isAoe && isSweepingStrikeCd)
-        {
-            isProcessed = true;
-            dictStates[m_keySweepStrike] = true;
-        }
-
-        // overpower 2 charges 
-        if (!isProcessed && isRange10 && isOverpowerCharge2)
-        {
-            isProcessed = true;
-            dictStates[m_keyOverpower] = true;
-        }
-
-        // mortal strike
-        if (!isProcessed && isRange10 && isMortalStrikeUsable && isMortalStrikeCd)
-        {
-            isProcessed = true;
-            dictStates[m_keyMortalStrike] = true;
-        }
-
-        // bladestorm
-        if (!isProcessed && isRange5 && isBladestormCd)
-        {
-            isProcessed = true;
-            dictStates[m_keyBladestrom] = true;
-        }
-
-        // execute
-        if (!isProcessed && isRange10 && isExecuteUsable && (!isAoe || targetHpPct >= 0.35f))
-        {
-            isProcessed = true;
-            dictStates[m_keyExecute] = true;
-        }
-
-        // overpower
-        if (!isProcessed && isRange10 && isOverpowerCharge1)
-        {
-            isProcessed = true;
-            dictStates[m_keyOverpower] = true;
-        }
-
-        // slam
-        if (!isProcessed && isRange10 && isSlamUsable && !isAoe && (!isMortalStrikeCd || mpPct >= 0.5f))
-        {
-            isProcessed = true;
-            dictStates[m_keySlam] = true;
-        }
-
-        // aoe execute
-        if (!isProcessed && isRange10 && isExecuteUsable && isAoe && targetHpPct <= 0.35f)
-        {
-            isProcessed = true;
-            dictStates[m_keyExecute] = true;
-        }
-
-        // wreck throw
-        if (!isProcessed && isRange10 && isWreckThrowCd)
-        {
-            isProcessed = true;
-            dictStates[m_keyWreckThrow] = true;
-        }
-
-        if (!isProcessed && isRange15 && isThrowRecommend)
-        {
-            isProcessed = true;
-            dictStates[m_keyThrow] = true;
-        }
-    }
-
-    private bool GetColorBoolean(int colorIdx, Dictionary<int, Color> dictColors)
-    {
-        Color color = dictColors[colorIdx];
-        if (color.R == 255)
-        {
-            return true;
+            Add(smash,8,"巨人打击"); Add(slam & F(37),13,"英勇打击");
+            Add(blade & buff.Smash,7,"剑刃风暴：巨人打击期间");
+            Add(mortal & buff.Precision.Expiring,11,"致死打击：刽子手的精准两层");
+            Add(execute & (buff.SuddenDeath.Present | F(7)),14,"斩杀：猝死或怒气>40");
+            Add(overpower,10,"压制"); Add(execute,14,"斩杀兜底");
         }
         else
         {
-            return false;
+            Add(cleave & rendTenNeeded & F(14),12,"顺劈斩：撕裂缺失/不足10秒且巨人打击就绪");
+            Add(smash,8,"巨人打击");
+            Add(execute & buff.SuddenDeath.Expiring,14,"斩杀：猝死两层");
+            Add(execute & blade & buff.Smash & !buff.Demise.Expiring & buff.SuddenDeath.Present,
+                14,"斩杀：剑刃风暴前补殒命在即");
+            Add(blade & buff.Smash,7,"剑刃风暴：巨人打击期间");
+            Add(slam & F(37),13,"英勇打击"); Add(mortal,11,"致死打击");
+            Add(execute & buff.SuddenDeath.Present,14,"斩杀：猝死存在");
+            Add(overpower,10,"压制");
+            Add(cleave & rendFiveNeeded,12,"顺劈斩：撕裂缺失/不足5秒");
+            Add(slam,13,"猛击技能族兜底");
         }
-    }
-
-    private float GetColorFloat(int colorIdx, Dictionary<int, Color> dictColors)
-    {
-        Color color = dictColors[colorIdx];
-        return color.R / 255.0f;
-    }
-
-    private bool GetColorSpecial(int colorIdx, Dictionary<int, Color> dictColors, Color targetColor)
-    {
-        Color color = dictColors[colorIdx];
-        if (color.R == targetColor.R && color.G == targetColor.G && color.B == targetColor.B)
+        foreach (var rule in rules)
         {
-            return true;
+            if (rule.Condition == true) return new(rule.Key,rule.Why,branch);
+            if (rule.Condition is null) return new(0,"等待状态："+rule.Why,branch);
         }
-        else
-        {
-            return false;
-        }
+        return (F(5) & F(40) & F(20)) == true ? new(16,"英勇投掷：内置建议兜底",branch) : new(0,"暂无可施放技能",branch);
     }
-
 }
