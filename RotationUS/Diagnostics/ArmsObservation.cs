@@ -45,11 +45,11 @@ internal sealed class ArmsBuffs
             return valid == true ? FuryBuffs.Boolean(color) is { } v ? v ? "是 · 充能进度条" : "否 · 充能进度条" : "未知（条像素无效）"
                 : "未知（压制充能来源无效）";
         }
-        if (!field.Id.StartsWith("S:"))
+        string? key = FuryBuffs.SpecialKey(layout, field);
+        if (key is null)
             return (field.Id is "6" or "8") && (color.R != color.G || color.G != color.B) ? "未知（血量采集失败）"
                 : field.Kind == ValueKind.FuryBoolean ? FuryBuffs.Boolean(color) is { } value ? value ? "是" : "否" : "未知（采集失败/受限）"
                 : field.Decode(color);
-        string key = field.Id[2..];
         var observation = Observe(layout, key, _ => color);
         if (observation.Present is null) return "未知 · " + observation.Source;
         if (observation.Present == false) return "缺失 · 固定点";
@@ -74,9 +74,10 @@ internal sealed class ArmsBuffs
             "食物标记", "目标正在施法/引导", "拳击就绪", "袋里乾坤就绪", "军官标记", "天神下凡自身冷却中", "武器通用字段已加载（需重载插件）" };
         var result = Enumerable.Range(1, 50).Select(i => new Field(i.ToString(), i <= names.Length ? names[i-1] : "未定义",
             i is 6 or 8 ? ValueKind.Percent : i <= names.Length && i != 9 ? ValueKind.FuryBoolean : ValueKind.Raw)).ToList();
+        result.AddRange(Enumerable.Range(51, 50).Select(DisplayProtocol.CommonField));
         result.Add(new("B1", "压制至少一充能", ValueKind.FuryBoolean, true));
         result.Add(new("B2", "压制两充能", ValueKind.FuryBoolean, true));
-        result.AddRange(Points.Select(p => new Field("S:" + p.Key, p.Label, ValueKind.Raw)));
+        result.AddRange(Points.Select((p, i) => new Field((DisplayProtocol.SpecialStart + i).ToString(), p.Label, ValueKind.Raw)));
         return result.ToArray();
     }
 }

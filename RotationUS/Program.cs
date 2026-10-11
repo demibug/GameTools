@@ -15,7 +15,7 @@ class Program
     public static extern short GetAsyncKeyState(int vKey);
     [DllImport("user32.dll")]
     public static extern short GetKeyState(int vKey);
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
@@ -180,237 +180,22 @@ class Program
 
     public static void RunLegacy()
     {
-        Dictionary<int, POINT> dictFrames = new Dictionary<int, POINT>();
-        int frameY = 0;
-        // home
-        dictFrames[1] = new POINT { X = 17, Y = frameY };
-        dictFrames[2] = new POINT { X = 29, Y = frameY };
-        dictFrames[3] = new POINT { X = 40, Y = frameY };
-        dictFrames[4] = new POINT { X = 52, Y = frameY };
-        dictFrames[5] = new POINT { X = 63, Y = frameY };
-        dictFrames[6] = new POINT { X = 74, Y = frameY };
-        dictFrames[7] = new POINT { X = 86, Y = frameY };
-        dictFrames[8] = new POINT { X = 97, Y = frameY };
-        dictFrames[9] = new POINT { X = 109, Y = frameY };
-        dictFrames[10] = new POINT { X = 120, Y = frameY };
-        dictFrames[11] = new POINT { X = 131, Y = frameY };
-        dictFrames[12] = new POINT { X = 143, Y = frameY };
-        dictFrames[13] = new POINT { X = 154, Y = frameY };
-        dictFrames[14] = new POINT { X = 166, Y = frameY };
-        dictFrames[15] = new POINT { X = 177, Y = frameY };
-        dictFrames[16] = new POINT { X = 189, Y = frameY };
-        dictFrames[17] = new POINT { X = 200, Y = frameY };
-        dictFrames[18] = new POINT { X = 211, Y = frameY };
-        dictFrames[19] = new POINT { X = 223, Y = frameY };
-        dictFrames[20] = new POINT { X = 234, Y = frameY };
-        dictFrames[21] = new POINT { X = 246, Y = frameY };
-        dictFrames[22] = new POINT { X = 257, Y = frameY };
-        dictFrames[23] = new POINT { X = 268, Y = frameY };
-        dictFrames[24] = new POINT { X = 280, Y = frameY };
-        dictFrames[25] = new POINT { X = 291, Y = frameY };
-        dictFrames[26] = new POINT { X = 303, Y = frameY };
-        dictFrames[27] = new POINT { X = 314, Y = frameY };
-        dictFrames[28] = new POINT { X = 325, Y = frameY };
-        dictFrames[29] = new POINT { X = 337, Y = frameY };
-        dictFrames[30] = new POINT { X = 348, Y = frameY };
-        dictFrames[31] = new POINT { X = 360, Y = frameY };
-        dictFrames[32] = new POINT { X = 371, Y = frameY };
-        dictFrames[33] = new POINT { X = 382, Y = frameY };
-        dictFrames[34] = new POINT { X = 394, Y = frameY };
-        dictFrames[35] = new POINT { X = 405, Y = frameY };
-        dictFrames[36] = new POINT { X = 417, Y = frameY };
-        dictFrames[37] = new POINT { X = 428, Y = frameY };
-        dictFrames[38] = new POINT { X = 440, Y = frameY };
-        dictFrames[39] = new POINT { X = 451, Y = frameY };
-        dictFrames[40] = new POINT { X = 462, Y = frameY };
-        dictFrames[41] = new POINT { X = 474, Y = frameY };
-        dictFrames[42] = new POINT { X = 485, Y = frameY };
-        dictFrames[43] = new POINT { X = 497, Y = frameY };
-        dictFrames[44] = new POINT { X = 508, Y = frameY };
-        dictFrames[45] = new POINT { X = 519, Y = frameY };
-        dictFrames[46] = new POINT { X = 531, Y = frameY };
-        dictFrames[47] = new POINT { X = 542, Y = frameY };
-        dictFrames[48] = new POINT { X = 554, Y = frameY };
-        dictFrames[49] = new POINT { X = 565, Y = frameY };
-        dictFrames[50] = new POINT { X = 576, Y = frameY };
-
-        // laptop
-        //dictFrames[1] = new POINT { X = 17, Y = frameY };
-        //dictFrames[2] = new POINT { X = 29, Y = frameY };
-        //dictFrames[3] = new POINT { X = 40, Y = frameY };
-        //dictFrames[4] = new POINT { X = 51, Y = frameY };
-        //dictFrames[5] = new POINT { X = 63, Y = frameY };
-        //dictFrames[6] = new POINT { X = 74, Y = frameY };
-        //dictFrames[7] = new POINT { X = 85, Y = frameY };
-        //dictFrames[8] = new POINT { X = 97, Y = frameY };
-        //dictFrames[9] = new POINT { X = 108, Y = frameY };
-        //dictFrames[10] = new POINT { X = 119, Y = frameY };
-        //dictFrames[11] = new POINT { X = 130, Y = frameY };
-        //dictFrames[12] = new POINT { X = 142, Y = frameY };
-        //dictFrames[13] = new POINT { X = 153, Y = frameY };
-        //dictFrames[14] = new POINT { X = 164, Y = frameY };
-        //dictFrames[15] = new POINT { X = 176, Y = frameY };
-        //dictFrames[16] = new POINT { X = 187, Y = frameY };
-        //dictFrames[17] = new POINT { X = 198, Y = frameY };
-        //dictFrames[18] = new POINT { X = 210, Y = frameY };
-        //dictFrames[19] = new POINT { X = 221, Y = frameY };
-        //dictFrames[20] = new POINT { X = 232, Y = frameY };
-        //dictFrames[21] = new POINT { X = 244, Y = frameY };
-        //dictFrames[22] = new POINT { X = 255, Y = frameY };
-        //dictFrames[23] = new POINT { X = 266, Y = frameY };
-        //dictFrames[24] = new POINT { X = 278, Y = frameY };
-        //dictFrames[25] = new POINT { X = 289, Y = frameY };
-        //dictFrames[26] = new POINT { X = 300, Y = frameY };
-        //dictFrames[27] = new POINT { X = 312, Y = frameY };
-        //dictFrames[28] = new POINT { X = 323, Y = frameY };
-        //dictFrames[29] = new POINT { X = 334, Y = frameY };
-        //dictFrames[30] = new POINT { X = 346, Y = frameY };
-        //dictFrames[31] = new POINT { X = 357, Y = frameY };
-        //dictFrames[32] = new POINT { X = 368, Y = frameY };
-        //dictFrames[33] = new POINT { X = 379, Y = frameY };
-        //dictFrames[34] = new POINT { X = 391, Y = frameY };
-        //dictFrames[35] = new POINT { X = 402, Y = frameY };
-        //dictFrames[36] = new POINT { X = 413, Y = frameY };
-        //dictFrames[37] = new POINT { X = 425, Y = frameY };
-        //dictFrames[38] = new POINT { X = 436, Y = frameY };
-        //dictFrames[39] = new POINT { X = 447, Y = frameY };
-        //dictFrames[40] = new POINT { X = 459, Y = frameY };
-        //dictFrames[41] = new POINT { X = 470, Y = frameY };
-        //dictFrames[42] = new POINT { X = 481, Y = frameY };
-        //dictFrames[43] = new POINT { X = 493, Y = frameY };
-        //dictFrames[44] = new POINT { X = 504, Y = frameY };
-        //dictFrames[45] = new POINT { X = 515, Y = frameY };
-        //dictFrames[46] = new POINT { X = 527, Y = frameY };
-        //dictFrames[47] = new POINT { X = 538, Y = frameY };
-        //dictFrames[48] = new POINT { X = 549, Y = frameY };
-        //dictFrames[49] = new POINT { X = 561, Y = frameY };
-        //dictFrames[50] = new POINT { X = 572, Y = frameY };
-
-        // 特殊点
-        dictFrames[51] = new POINT { X = 610, Y = 8 };
-        // Use the same picked Ignore Pain point/color as the normal window.
-        string specialLayoutPath = System.IO.Path.Combine(AppContext.BaseDirectory, "diagnostic-layout.json");
-        if (ClassType == PlayerClass.FZ && System.IO.File.Exists(specialLayoutPath))
+        // All entry points consume calibrated 100-cell geometry; no fixed legacy coordinates.
+        var layouts = new RotationUS.Diagnostics.ProfileLayouts(AppContext.BaseDirectory);
+        var geometry = RotationUS.Diagnostics.DiagnosticLayout.Load(layouts.DiscoveryPath);
+        if (!geometry.CurrentProtocol || geometry.MarkerLayout != RotationUS.Diagnostics.MarkerLayouts.Wide)
+            throw new InvalidOperationException("请先在诊断界面重新定位100个色块，再启动旧入口。");
+        var dictFrames = geometry.Frames.Select((p,i) => (p,i))
+            .ToDictionary(v => v.i + 1, v => new POINT { X = v.p.X, Y = v.p.Y });
+        var dictBars = geometry.Bars.Select((p,i) => (p,i))
+            .ToDictionary(v => v.i + 1, v => new POINT { X = v.p.X, Y = v.p.Y });
+        if (ClassType == PlayerClass.FZ)
         {
-            var specialLayouts = new RotationUS.Diagnostics.ProfileLayouts(AppContext.BaseDirectory);
-            var specialLayout = specialLayouts.Load(RotationUS.Diagnostics.ClassProfiles.Protection,
-                RotationUS.Diagnostics.DiagnosticLayout.Load(specialLayoutPath));
-            if (specialLayout.SpecialEnabled)
-            {
-                dictFrames[51] = new POINT { X = specialLayout.Special.X, Y = specialLayout.Special.Y };
-                FZ.Inst.IgnorePainReferenceColor = specialLayout.SpecialReferenceColor?.ToColor();
-            }
-            else dictFrames.Remove(51);
+            var saved = layouts.Load(RotationUS.Diagnostics.ClassProfiles.Protection, geometry);
+            if (saved.SpecialEnabled)
+                dictFrames[RotationUS.Diagnostics.DisplayProtocol.SpecialStart] = new POINT { X = saved.Special.X, Y = saved.Special.Y };
+            FZ.Inst.IgnorePainReferenceColor = saved.SpecialEnabled ? saved.SpecialReferenceColor?.ToColor() : null;
         }
-
-
-        Dictionary<int, POINT> dictBars = new Dictionary<int, POINT>();
-
-        int barY = 1;
-        // home
-        dictBars[1] = new POINT { X = 17, Y = barY };
-        dictBars[2] = new POINT { X = 29, Y = barY };
-        dictBars[3] = new POINT { X = 40, Y = barY };
-        dictBars[4] = new POINT { X = 52, Y = barY };
-        dictBars[5] = new POINT { X = 63, Y = barY };
-        dictBars[6] = new POINT { X = 74, Y = barY };
-        dictBars[7] = new POINT { X = 86, Y = barY };
-        dictBars[8] = new POINT { X = 97, Y = barY };
-        dictBars[9] = new POINT { X = 109, Y = barY };
-        dictBars[10] = new POINT { X = 120, Y = barY };
-        dictBars[11] = new POINT { X = 131, Y = barY };
-        dictBars[12] = new POINT { X = 143, Y = barY };
-        dictBars[13] = new POINT { X = 154, Y = barY };
-        dictBars[14] = new POINT { X = 166, Y = barY };
-        dictBars[15] = new POINT { X = 177, Y = barY };
-        dictBars[16] = new POINT { X = 189, Y = barY };
-        dictBars[17] = new POINT { X = 200, Y = barY };
-        dictBars[18] = new POINT { X = 211, Y = barY };
-        dictBars[19] = new POINT { X = 223, Y = barY };
-        dictBars[20] = new POINT { X = 234, Y = barY };
-        dictBars[21] = new POINT { X = 246, Y = barY };
-        dictBars[22] = new POINT { X = 257, Y = barY };
-        dictBars[23] = new POINT { X = 268, Y = barY };
-        dictBars[24] = new POINT { X = 280, Y = barY };
-        dictBars[25] = new POINT { X = 291, Y = barY };
-        dictBars[26] = new POINT { X = 303, Y = barY };
-        dictBars[27] = new POINT { X = 314, Y = barY };
-        dictBars[28] = new POINT { X = 325, Y = barY };
-        dictBars[29] = new POINT { X = 337, Y = barY };
-        dictBars[30] = new POINT { X = 348, Y = barY };
-        dictBars[31] = new POINT { X = 360, Y = barY };
-        dictBars[32] = new POINT { X = 371, Y = barY };
-        dictBars[33] = new POINT { X = 382, Y = barY };
-        dictBars[34] = new POINT { X = 394, Y = barY };
-        dictBars[35] = new POINT { X = 405, Y = barY };
-        dictBars[36] = new POINT { X = 417, Y = barY };
-        dictBars[37] = new POINT { X = 428, Y = barY };
-        dictBars[38] = new POINT { X = 440, Y = barY };
-        dictBars[39] = new POINT { X = 451, Y = barY };
-        dictBars[40] = new POINT { X = 462, Y = barY };
-        dictBars[41] = new POINT { X = 474, Y = barY };
-        dictBars[42] = new POINT { X = 485, Y = barY };
-        dictBars[43] = new POINT { X = 497, Y = barY };
-        dictBars[44] = new POINT { X = 508, Y = barY };
-        dictBars[45] = new POINT { X = 519, Y = barY };
-        dictBars[46] = new POINT { X = 531, Y = barY };
-        dictBars[47] = new POINT { X = 542, Y = barY };
-        dictBars[48] = new POINT { X = 554, Y = barY };
-        dictBars[49] = new POINT { X = 565, Y = barY };
-        dictBars[50] = new POINT { X = 576, Y = barY };
-
-        // laptop
-        //dictBars[1] = new POINT { X = 17, Y = barY };
-        //dictBars[2] = new POINT { X = 29, Y = barY };
-        //dictBars[3] = new POINT { X = 40, Y = barY };
-        //dictBars[4] = new POINT { X = 51, Y = barY };
-        //dictBars[5] = new POINT { X = 63, Y = barY };
-        //dictBars[6] = new POINT { X = 74, Y = barY };
-        //dictBars[7] = new POINT { X = 85, Y = barY };
-        //dictBars[8] = new POINT { X = 97, Y = barY };
-        //dictBars[9] = new POINT { X = 108, Y = barY };
-        //dictBars[10] = new POINT { X = 119, Y = barY };
-        //dictBars[11] = new POINT { X = 130, Y = barY };
-        //dictBars[12] = new POINT { X = 142, Y = barY };
-        //dictBars[13] = new POINT { X = 153, Y = barY };
-        //dictBars[14] = new POINT { X = 164, Y = barY };
-        //dictBars[15] = new POINT { X = 176, Y = barY };
-        //dictBars[16] = new POINT { X = 187, Y = barY };
-        //dictBars[17] = new POINT { X = 198, Y = barY };
-        //dictBars[18] = new POINT { X = 210, Y = barY };
-        //dictBars[19] = new POINT { X = 221, Y = barY };
-        //dictBars[20] = new POINT { X = 232, Y = barY };
-        //dictBars[21] = new POINT { X = 244, Y = barY };
-        //dictBars[22] = new POINT { X = 255, Y = barY };
-        //dictBars[23] = new POINT { X = 266, Y = barY };
-        //dictBars[24] = new POINT { X = 278, Y = barY };
-        //dictBars[25] = new POINT { X = 289, Y = barY };
-        //dictBars[26] = new POINT { X = 300, Y = barY };
-        //dictBars[27] = new POINT { X = 312, Y = barY };
-        //dictBars[28] = new POINT { X = 323, Y = barY };
-        //dictBars[29] = new POINT { X = 334, Y = barY };
-        //dictBars[30] = new POINT { X = 346, Y = barY };
-        //dictBars[31] = new POINT { X = 357, Y = barY };
-        //dictBars[32] = new POINT { X = 368, Y = barY };
-        //dictBars[33] = new POINT { X = 379, Y = barY };
-        //dictBars[34] = new POINT { X = 391, Y = barY };
-        //dictBars[35] = new POINT { X = 402, Y = barY };
-        //dictBars[36] = new POINT { X = 413, Y = barY };
-        //dictBars[37] = new POINT { X = 425, Y = barY };
-        //dictBars[38] = new POINT { X = 436, Y = barY };
-        //dictBars[39] = new POINT { X = 447, Y = barY };
-        //dictBars[40] = new POINT { X = 459, Y = barY };
-        //dictBars[41] = new POINT { X = 470, Y = barY };
-        //dictBars[42] = new POINT { X = 481, Y = barY };
-        //dictBars[43] = new POINT { X = 493, Y = barY };
-        //dictBars[44] = new POINT { X = 504, Y = barY };
-        //dictBars[45] = new POINT { X = 515, Y = barY };
-        //dictBars[46] = new POINT { X = 527, Y = barY };
-        //dictBars[47] = new POINT { X = 538, Y = barY };
-        //dictBars[48] = new POINT { X = 549, Y = barY };
-        //dictBars[49] = new POINT { X = 561, Y = barY };
-        //dictBars[50] = new POINT { X = 572, Y = barY };
-
 
         bool isPaused = true; // 程序暂停状态
 
@@ -686,6 +471,13 @@ class Program
     {
         dictState.Clear();
         profile.Process(frames, bars, dictState);
+        if (profile.SpecId == 65)
+        {
+            if (HOLY.Inst.LastDecision.Key is >= 101 and <= 105)
+                SimulateShiftKeyPress((byte)(0x70 + HOLY.Inst.LastDecision.Key - 101));
+            else CheckState(dictState);
+            return;
+        }
         CheckState(dictState);
     }
 

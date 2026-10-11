@@ -79,7 +79,7 @@ class FZ
     private int m_colorIdxShieldBlockCharge2 = 2;
 
 
-    private int m_colorIdxIp = 51;
+    private int m_colorIdxIp = RotationUS.Diagnostics.DisplayProtocol.SpecialStart;
     public Color? IgnorePainReferenceColor { get; set; }
 
     private int m_keyVirtoryRush = 1;

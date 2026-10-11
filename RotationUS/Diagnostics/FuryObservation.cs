@@ -35,10 +35,23 @@ internal sealed class FuryBuffs
             Hack = Observe(layout, "hack", read).Present, Whirlwind = Observe(layout, "whirlwind", read).Present,
             ThunderMode = layout.ThunderMode };
     }
-    internal static SamplePoint? Point(DiagnosticLayout layout, Field field) => field.Id.StartsWith("S:")
-        ? layout.SpecialPoints.TryGetValue(field.Id[2..], out var p) && p.Enabled ? p.Point : null
-        : field.Bar ? layout.Bars[int.Parse(field.Id[1..]) - 1]
-        : field.Id == "51" ? layout.SpecialEnabled ? layout.Special : null : layout.Frames[int.Parse(field.Id) - 1];
+    internal static string? SpecialKey(DiagnosticLayout layout, Field field)
+    {
+        if (field.Id.StartsWith("S:")) return field.Id[2..];
+        if (field.Bar || !int.TryParse(field.Id, out int id)) return null;
+        if (layout.SpecId == 65) return HolyBuffs.Points.FirstOrDefault(p=>HolyBuffs.PointId(p.Key)==id).Key;
+        int index = id - DisplayProtocol.SpecialStart;
+        var points = layout.SpecId == 65 ? HolyBuffs.Points : layout.SpecId == 71 ? ArmsBuffs.Points : layout.SpecId == 72 ? Points : Array.Empty<(string Key, string Label)>();
+        return index >= 0 && index < points.Length ? points[index].Key : null;
+    }
+    internal static SamplePoint? Point(DiagnosticLayout layout, Field field)
+    {
+        if (SpecialKey(layout, field) is { } key)
+            return layout.SpecialPoints.TryGetValue(key, out var p) && p.Enabled ? p.Point : null;
+        if (field.Bar) return layout.Bars[int.Parse(field.Id[1..]) - 1];
+        int id = int.Parse(field.Id);
+        return id >= DisplayProtocol.SpecialStart ? layout.SpecialEnabled ? layout.Special : null : layout.Frames[id - 1];
+    }
     internal static string Decode(DiagnosticLayout layout, Field field, Color color, Func<SamplePoint,Color>? read = null)
     {
         if(layout.SpecId==72 && field.Bar)
@@ -48,9 +61,9 @@ internal sealed class FuryBuffs
             if(valid!=true) return valid==false?"未知（接口条未启用）":"未知（接口条采集失败/受限）";
             return Boolean(color) is { } barValue ? (barValue?"是":"否")+" · 接口进度条" : "未知（条像素无效）";
         }
-        if (!field.Id.StartsWith("S:")) return layout.SpecId == 72 && field.Id == "6" && (color.R != color.G || color.G != color.B) ? "未知（血量采集失败）" : field.Kind == ValueKind.FuryBoolean
+        string? key = SpecialKey(layout, field);
+        if (key is null) return layout.SpecId == 72 && field.Id == "6" && (color.R != color.G || color.G != color.B) ? "未知（血量采集失败）" : field.Kind == ValueKind.FuryBoolean
             ? Boolean(color) is { } v ? v ? "是" : "否" : "未知（采集失败/受限）" : field.Decode(color, layout.SpecialReferenceColor);
-        string key = field.Id[2..];
         if (!layout.SpecialPoints.TryGetValue(key, out var setting)) return "未知 · 未配置";
         bool present = color.R != 0 || color.G != 0 || color.B != 0;
         string state = !present ? "缺失" : UsesTimeColor(key) && setting.Comparison == "expiring" && setting.ReferenceColor == SampleColor.From(color)
@@ -66,11 +79,12 @@ internal sealed class FuryBuffs
             "鲁莽自身冷却中", "天神自身冷却中", "暴怒就绪", "嗜血技能族就绪", "怒击技能族就绪（无充能时）", "斩杀就绪", "雷霆技能族就绪", "狂暴协议有效", "怒击充能来源有效", "精确层数条来源有效", "Hack and Slash（接口）", "旋风斩增益（接口）", "Hack接口来源有效", "旋风斩接口来源有效" };
         var result = Enumerable.Range(1, 50).Select(i => new Field(i.ToString(), i <= names.Length ? names[i-1] : "未定义",
             i == 6 ? ValueKind.Percent : i <= names.Length ? ValueKind.FuryBoolean : ValueKind.Raw)).ToList();
+        result.AddRange(Enumerable.Range(51, 50).Select(DisplayProtocol.CommonField));
         result.Add(new("B1", "怒击至少一充能", ValueKind.FuryBoolean, true));
         result.Add(new("B2", "怒击两充能", ValueKind.FuryBoolean, true));
         result.Add(new("B3", "雷霆轰击至少一层（接口）", ValueKind.FuryBoolean, true));
         result.Add(new("B4", "雷霆轰击两层（接口）", ValueKind.FuryBoolean, true));
-        result.AddRange(Points.Select(p => new Field("S:" + p.Key, p.Label, ValueKind.Raw)));
+        result.AddRange(Points.Select((p, i) => new Field((DisplayProtocol.SpecialStart + i).ToString(), p.Label, ValueKind.Raw)));
         return result.ToArray();
     }
 }

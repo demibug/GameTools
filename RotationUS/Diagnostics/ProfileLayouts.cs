@@ -24,6 +24,7 @@ internal sealed class ProfileLayouts
             result.SpecialEnabled = saved.SpecialEnabled && compatible;
             result.SpecialPoints = saved.SpecialPoints.ToDictionary(p => p.Key, p => p.Value.Copy());
             result.ThunderMode = saved.ThunderMode;
+            result.HolyThresholds = saved.HolyThresholds;
             if (!compatible)
             {
                 result.SpecialReferenceColor = null;
@@ -40,8 +41,16 @@ internal sealed class ProfileLayouts
             { result.SpecialEnabled = false; result.SpecialReferenceColor = null; result.Special = new(610, 8); }
         }
         result.SpecId = profile.SpecId;
+        if(profile.SpecId==65) {
+            // Keep the old >=1 point (equivalent to presence), never reuse layer
+            // coordinates as the unrelated instant-Holy-Light buff source.
+            result.SpecialPoints.Remove("holy_i2");result.SpecialPoints.Remove("holy_i3");
+            result.SpecialPoints.Remove("holy_forbearance");
+            result.SpecialPoints.Remove("holy_virtue");
+            result.SpecialPoints.Remove("holy_wings");
+        }
         if (!profile.HasSpecial) { result.SpecialEnabled = false; result.SpecialReferenceColor = null; }
-        if (profile.SpecId is not (71 or 72)) result.SpecialPoints.Clear();
+        if (profile.SpecId is not (65 or 71 or 72)) result.SpecialPoints.Clear();
         else result.SpecialEnabled = false;
         result.Validate(); return result;
     }

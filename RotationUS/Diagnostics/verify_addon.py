@@ -19,6 +19,11 @@ classIDs = {WARRIOR=1, PALADIN=2, ROGUE=4, DEATHKNIGHT=6, MONK=10, DRUID=11, DEM
 specIDs = {WARRIOR={71,72,73},PALADIN={65,66,70},ROGUE={259,260,261},DEATHKNIGHT={250,251,252},MONK={268,270,269},DRUID={102,103,104,105},DEMONHUNTER={577,581,1480},MAGE={62,63,64}}
 function UnitClass() return "player", class, classIDs[class] end
 function IsLoggedIn() return true end
+function IsInRaid() return false end
+function UnitExists(unit) return unit=="player" end
+function UnitIsConnected() return true end
+function UnitHealthPercent() return .5 end
+C_CurveUtil={CreateCurve=function() return {AddPoint=function() end} end}
 C_SpecializationInfo = {GetSpecialization = function() return spec end, GetSpecializationInfo = function(index) return specIDs[class][index] end}
 SlashCmdList = {}
 function print() end
@@ -71,7 +76,7 @@ end
 ''')
 root = Path(sys.argv[1])
 assert "Classes/Kbz.lua" in (root / "HijiAddon.toc").read_text(encoding="utf-8-sig").replace("\\", "/")
-for filename in ("Init.lua", "Frames.lua", "Bars.lua", "Diagnostics.lua"):
+for filename in ("Init.lua", "Frames.lua", "Bars.lua", "Diagnostics.lua", "TeamHealth.lua"):
     runtime.execute((root / filename).read_text(encoding="utf-8-sig"))
 runtime.execute(r'''
 heartbeatFrame = frames[#frames]
@@ -95,7 +100,7 @@ HijiAddon.UpdateBear = function() updates=updates+1 end
 runtime.execute((root / "ClassDriver.lua").read_text(encoding="utf-8-sig"))
 runtime.execute(r'''
 warFrame = named.HijiAddonClassDriver
-for _, name in ipairs({"UpdateFQ","UpdateKtz","UpdateUDK","UpdateJiuMonk","UpdateWindMonk","UpdateDht"}) do
+for _, name in ipairs({"UpdateHoly","UpdateFQ","UpdateKtz","UpdateUDK","UpdateJiuMonk","UpdateWindMonk","UpdateDht"}) do
     HijiAddon[name] = function() updates=updates+1 end
 end
 warFrame.scripts.OnUpdate(warFrame, 1.1)
@@ -109,7 +114,7 @@ SlashCmdList.HIJIADDONDIAGNOSTIC(" locate on ")
 assertSharedLayout()
 assert(HijiAddon.diagnosticTestMode)
 assert(not protectionBar.shown and HijiAddon.bar_1==nil)
-for i=1,50 do
+for i=1,100 do
     assert(HijiAddon["frame_"..i].shown)
     local mode=i%3
     assert(rgb(HijiAddon["texture_"..i],mode==0 and 1 or 0,mode==1 and 1 or 0,mode==2 and 1 or 0))
@@ -123,7 +128,7 @@ assert(named.HijiAddonDiagnosticMarker3.textures[1].b~=old)
 SlashCmdList.HIJIADDONDIAGNOSTIC("locate off")
 assert(not HijiAddon.diagnosticTestMode)
 assert(not protectionBar.shown and protectionBar.value==0 and HijiAddon.bar_1==nil)
-for i=1,50 do
+for i=1,100 do
     assert(not HijiAddon["frame_"..i].shown)
     assert(rgb(HijiAddon["texture_"..i],1,1,1))
 end
@@ -143,7 +148,7 @@ assert(not HijiAddon.frame_21.shown and not protectionBar.shown and HijiAddon.ba
 assert(rgb(named.HijiAddonDiagnosticMarker3.textures[1],0,0,0))
 warFrame.scripts.OnUpdate(warFrame,1.1)
 assert(updates==3 and rgb(named.HijiAddonDiagnosticMarker2.textures[1],71/255,0,1/255))
-local cases={{"DRUID",2,103},{"DRUID",3,104},{"PALADIN",2,66},{"ROGUE",2,260},{"DEATHKNIGHT",3,252},{"MONK",1,268},{"MONK",3,269},{"DEMONHUNTER",2,581}}
+local cases={{"DRUID",2,103},{"DRUID",3,104},{"PALADIN",1,65},{"PALADIN",2,66},{"ROGUE",2,260},{"DEATHKNIGHT",3,252},{"MONK",1,268},{"MONK",3,269},{"DEMONHUNTER",2,581}}
 for _,case in ipairs(cases) do
     displaceLayout()
     class,spec=case[1],case[2]
@@ -173,13 +178,13 @@ HijiAddon.UpdateKbz=updateFury
 class,spec="DRUID",2
 warFrame.scripts.OnUpdate(warFrame,.2)
 local catBar=HijiAddon.bar_1
-assert(catBar~=protectionBar and catBar.shown and catBar.max==5 and catBar.w==50 and catBar.value==5)
+assert(catBar~=protectionBar and catBar.shown and catBar.max==5 and catBar.w==25 and catBar.value==5)
 assert(not HijiAddon.frame_42.shown)
 local frameCount=#frames
 HijiAddon.UpdateFz=updateProtection
 class,spec="WARRIOR",3
 warFrame.scripts.OnUpdate(warFrame,.2)
-assert(HijiAddon.bar_1==protectionBar and protectionBar.shown and protectionBar.max==2 and protectionBar.w==20)
+assert(HijiAddon.bar_1==protectionBar and protectionBar.shown and protectionBar.max==2 and protectionBar.w==10)
 assert(not catBar.shown and #frames==frameCount)
 class,spec="DRUID",2
 warFrame.scripts.OnUpdate(warFrame,.2)
@@ -199,4 +204,4 @@ displaceLayout()
 warFrame.scripts.OnEvent(warFrame,"PLAYER_SPECIALIZATION_CHANGED","player")
 assertSharedLayout()
 ''')
-print("PASS: shared right-side layout restored across classes/specs/talent changes and locate mode; calibration lifecycle, successful-data heartbeat, eleven class routes including Fury, automatic spec switching/timer resets, resource-bar range/visibility/cache, and unsupported class clearing.")
+print("PASS: shared right-side layout restored across classes/specs/talent changes and locate mode; calibration lifecycle, successful-data heartbeat, twelve class routes including Fury/Holy, automatic spec switching/timer resets, resource-bar range/visibility/cache, and unsupported class clearing.")

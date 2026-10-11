@@ -16,8 +16,8 @@ internal static class PositionVerification
             var actual = read(point);
             checks.Add(new(id, name, point, string.Join("/", allowed.Select(Name)), actual, allowed.Contains(Colors.Kind(actual))));
         }
-        for (int i = 0; i < 50; i++) Add((i + 1).ToString(), "第一行定位色块", layout.Frames[i], new[] { 2, 1, 4 }[i % 3]);
-        for (int i = 0; i < 50; i++) Add("B" + (i + 1), "第二行定位色块", layout.Bars[i], i % 2 == 0 ? 5 : 3);
+        for (int i = 0; i < layout.Frames.Length; i++) Add((i + 1).ToString(), "第一行定位色块", layout.Frames[i], new[] { 2, 1, 4 }[i % 3]);
+        for (int i = 0; i < layout.Bars.Length; i++) Add("B" + (i + 1), "第二行定位色块", layout.Bars[i], i % 2 == 0 ? 5 : 3);
         Add("M1", "定位测试标记", layout.Markers[0], 4);
         var identityColor = read(layout.Markers[1]);
         checks.Add(new("M2", "职业 / 专精标记", layout.Markers[1], "职业专精编码", identityColor,
@@ -31,18 +31,23 @@ internal static class PositionVerification
     public static bool CompatibleSpecialGeometry(DiagnosticLayout a, DiagnosticLayout b) =>
         a.MarkerLayout == MarkerLayouts.Wide && b.MarkerLayout == MarkerLayouts.Wide &&
         a.ClientWidth == b.ClientWidth && a.ClientHeight == b.ClientHeight &&
-        a.Frames.SequenceEqual(b.Frames) && a.Bars.SequenceEqual(b.Bars) &&
-        (a.Markers.SequenceEqual(b.Markers) || KnownMarkerGeometry(a) && KnownMarkerGeometry(b));
+        (a.Version == b.Version
+            ? a.Frames.SequenceEqual(b.Frames) && a.Bars.SequenceEqual(b.Bars) &&
+                (a.Markers.SequenceEqual(b.Markers) || KnownMarkerGeometry(a) && KnownMarkerGeometry(b))
+            : a.Markers.Zip(b.Markers).All(pair => Math.Abs(pair.First.X - pair.Second.X) <= 2 && pair.First.Y == pair.Second.Y) &&
+                KnownMarkerGeometry(a) && KnownMarkerGeometry(b) &&
+                a.Frames[0].Y == b.Frames[0].Y && a.Bars[0].Y == b.Bars[0].Y);
     private static bool KnownMarkerGeometry(DiagnosticLayout layout)
     {
-        double cell = (layout.Frames[^1].X - layout.Frames[0].X) / 49.0;
+        double cell = (layout.Frames[^1].X - layout.Frames[0].X) / (double)(layout.Frames.Length - 1);
         double start = layout.Frames[0].X - cell / 2;
         // Rounded cells can shift the inferred edge by one pixel.
-        return layout.Markers.Select((p, i) => Math.Abs(p.X - (start + (MarkerLayouts.Offset(layout.MarkerLayout) + i) * cell)) <= 2 && p.Y == layout.Frames[0].Y).All(v => v);
+        return layout.Markers.Select((p, i) => Math.Abs(p.X - (start +
+            (MarkerLayouts.CenterX(layout.MarkerLayout) + i * 10 - layout.CellWidth) * cell / layout.CellWidth)) <= 2 && p.Y == layout.Frames[0].Y).All(v => v);
     }
     public static Captured Crop(Captured scan, DiagnosticLayout layout)
     {
-        // Point 51 has no calibration pattern; localization never uses it.
+        // External points 101+ have no calibration pattern; localization never uses them.
         var points = layout.Frames.Concat(layout.Bars).Concat(layout.Markers).ToArray();
         var area = Rectangle.FromLTRB(Math.Max(0, points.Min(p => p.X) - 6), Math.Max(0, points.Min(p => p.Y) - 3),
             Math.Min(scan.Bounds.Right, points.Max(p => p.X) + 7), Math.Min(scan.Bounds.Bottom, points.Max(p => p.Y) + 5));

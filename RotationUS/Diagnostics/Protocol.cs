@@ -25,19 +25,37 @@ internal sealed class SpecialPointSetting
     public SpecialPointSetting Copy() => new() { Point = Point with { }, Enabled = Enabled, Comparison = Comparison, ReferenceColor = ReferenceColor };
 }
 
+internal static class DisplayProtocol
+{
+    internal const int CellCount = 100;
+    internal const int CellWidth = 5;
+    internal const int SpecialStart = 101;
+    internal const int TeamHealthStart = 51;
+    internal const int TeamHealthCount = 40;
+    internal const int PositionCheckCount = CellCount * 2 + 3;
+    internal static Field CommonField(int index) => index is >= TeamHealthStart and < TeamHealthStart + TeamHealthCount
+        ? new(index.ToString(), $"团队成员 {index - TeamHealthStart + 1} 血量", ValueKind.TeamHealth)
+        : new(index.ToString(), index > 90 ? "预留" : "未定义", ValueKind.Raw);
+}
+
 internal static class MarkerLayouts
 {
     internal const string Legacy = "legacy";
     internal const string PreviousWide = "wide-v1";
     internal const string Wide = "wide-v2";
     internal static double Offset(string kind) => kind switch { Legacy => 55.5, PreviousWide => 68.5, Wide => 73.5, _ => throw new InvalidDataException("未知标记布局。") };
-    internal static SamplePoint[] Points(int left, double cell, int y, string kind) =>
-        Enumerable.Range(0, 3).Select(n => new SamplePoint((int)Math.Floor(left + (Offset(kind) + n) * cell), y)).ToArray();
+    // Marker centers use fixed UI coordinates; cell width only determines UI scale.
+    internal static double CenterX(string kind) => (Offset(kind) + 1) * 10;
+    internal static SamplePoint[] Points(int left, double cell, int y, string kind, int cellWidth) =>
+        Enumerable.Range(0, 3).Select(n => new SamplePoint((int)Math.Floor(left +
+            (CenterX(kind) + n * 10 - cellWidth) * cell / cellWidth), y)).ToArray();
 }
 
 internal sealed class DiagnosticLayout
 {
-    public int Version { get; set; } = 1;
+    public int Version { get; set; } = 2;
+    public int CellWidth { get; set; } = DisplayProtocol.CellWidth;
+    internal bool CurrentProtocol => Version == 2 && CellWidth == DisplayProtocol.CellWidth && Frames.Length == DisplayProtocol.CellCount;
     public int SpecId { get; set; }
     public int ClientWidth { get; set; }
     public int ClientHeight { get; set; }
@@ -50,17 +68,22 @@ internal sealed class DiagnosticLayout
     public string MarkerLayout { get; set; } = MarkerLayouts.Legacy;
     public Dictionary<string, SpecialPointSetting> SpecialPoints { get; set; } = new();
     public string ThunderMode { get; set; } = "presence-only";
+    public HealingThresholds HolyThresholds { get; set; } = new();
     public DiagnosticLayout Copy() => new()
     {
-        Version = Version, SpecId = SpecId, ClientWidth = ClientWidth, ClientHeight = ClientHeight,
+        Version = Version, CellWidth = CellWidth, SpecId = SpecId, ClientWidth = ClientWidth, ClientHeight = ClientHeight,
         Frames = Frames.ToArray(), Bars = Bars.ToArray(), Markers = Markers.ToArray(), Special = Special, SpecialEnabled = SpecialEnabled,
         SpecialReferenceColor = SpecialReferenceColor, MarkerLayout = MarkerLayout, ThunderMode = ThunderMode,
-        SpecialPoints = SpecialPoints.ToDictionary(p => p.Key, p => p.Value.Copy())
+        SpecialPoints = SpecialPoints.ToDictionary(p => p.Key, p => p.Value.Copy()), HolyThresholds = HolyThresholds
     };
     public void Validate()
     {
-        if (Version != 1 || ClientWidth <= 0 || ClientHeight <= 0 || Frames is null || Bars is null || Markers is null || Special is null ||
-            Frames.Length != 50 || Bars.Length != 50 || Markers.Length != 3)
+        if (HolyThresholds is null) throw new InvalidDataException("治疗阈值不能为空。");
+        HolyThresholds.Validate();
+        int count = Version == 1 ? 50 : DisplayProtocol.CellCount;
+        if (Version is not (1 or 2) || CellWidth != (Version == 1 ? 10 : DisplayProtocol.CellWidth) ||
+            ClientWidth <= 0 || ClientHeight <= 0 || Frames is null || Bars is null || Markers is null || Special is null ||
+            Frames.Length != count || Bars.Length != count || Markers.Length != 3)
             throw new InvalidDataException("布局格式不正确，请重新校准。");
         _ = MarkerLayouts.Offset(MarkerLayout);
         if (SpecialPoints is null || ThunderMode is not ("presence-only" or "exact-stacks")) throw new InvalidDataException("特殊点配置格式不正确。");
@@ -73,7 +96,7 @@ internal sealed class DiagnosticLayout
         foreach (var p in Frames.Concat(Bars).Concat(Markers).Concat(SpecialEnabled ? new[] { Special } : Array.Empty<SamplePoint>()).Concat(SpecialPoints.Values.Where(s => s.Enabled).Select(s => s.Point)))
             if (p is null || p.X < 0 || p.Y < 0 || p.X >= ClientWidth || p.Y >= ClientHeight)
                 throw new InvalidDataException("布局点位超出游戏客户区。");
-        if (Frames.Select(p => p.X).Distinct().Count() != 50 || Bars.Select(p => p.X).Distinct().Count() != 50)
+        if (Frames.Select(p => p.X).Distinct().Count() != count || Bars.Select(p => p.X).Distinct().Count() != count)
             throw new InvalidDataException("布局包含重复点位。");
     }
     public Rectangle CaptureBounds
@@ -90,6 +113,7 @@ internal sealed class DiagnosticLayout
     public static DiagnosticLayout Load(string path)
     {
         var value = JsonSerializer.Deserialize<DiagnosticLayout>(File.ReadAllText(path)) ?? throw new InvalidDataException("布局为空。");
+        if (value.Version == 1) value.CellWidth = 10;
         value.Validate(); return value;
     }
 }
@@ -124,29 +148,29 @@ internal static class Calibration
     }
     private static bool Match(List<Run> runs, int offset, int[] pattern)
     {
-        if (offset + 50 > runs.Count) return false;
-        var widths = runs.Skip(offset).Take(50).Select(r => r.End - r.Start).ToArray();
+        if (offset + DisplayProtocol.CellCount > runs.Count) return false;
+        var widths = runs.Skip(offset).Take(DisplayProtocol.CellCount).Select(r => r.End - r.Start).ToArray();
         double mean = widths.Average();
         if (mean < 2 || mean > 80 || widths.Any(w => Math.Abs(w - mean) > Math.Max(1.1, mean * .2))) return false;
-        return Enumerable.Range(0, 50).All(i => runs[offset + i].Kind == pattern[i % pattern.Length]);
+        return Enumerable.Range(0, DisplayProtocol.CellCount).All(i => runs[offset + i].Kind == pattern[i % pattern.Length]);
     }
     public static DiagnosticLayout Find(Bitmap image, Size client)
     {
         for (int y = 0; y < Math.Min(image.Height, 96); y++)
         {
             var runs = Runs(image, y);
-            for (int i = 0; i + 50 <= runs.Count; i++)
+            for (int i = 0; i + DisplayProtocol.CellCount <= runs.Count; i++)
             {
                 if (!Match(runs, i, new[] { 2, 1, 4 })) continue;
-                var row = runs.Skip(i).Take(50).ToArray();
+                var row = runs.Skip(i).Take(DisplayProtocol.CellCount).ToArray();
                 int left = row[0].Start, right = row[^1].End;
-                double cell = (right - left) / 50.0;
+                double cell = (right - left) / (double)DisplayProtocol.CellCount;
                 for (int by = y + 1; by <= Math.Min(image.Height - 1, y + 16); by++)
                 {
                     var lower = Runs(image, by);
                     int j = lower.FindIndex(r => r.Start == left && r.Kind == 5);
-                    if (j < 0 || !Match(lower, j, new[] { 5, 3 }) || lower[j + 49].End != right) continue;
-                    var candidates = new[] { MarkerLayouts.Legacy, MarkerLayouts.PreviousWide, MarkerLayouts.Wide }.Select(kind => (kind, points: MarkerLayouts.Points(left, cell, y, kind)))
+                    if (j < 0 || !Match(lower, j, new[] { 5, 3 }) || lower[j + DisplayProtocol.CellCount - 1].End != right) continue;
+                    var candidates = new[] { MarkerLayouts.Legacy, MarkerLayouts.PreviousWide, MarkerLayouts.Wide }.Select(kind => (kind, points: MarkerLayouts.Points(left, cell, y, kind, DisplayProtocol.CellWidth)))
                         .Where(c => c.points.All(p => p.X < image.Width) && Colors.Kind(image.GetPixel(c.points[0].X, y)) == 4 &&
                             Colors.Kind(image.GetPixel(c.points[2].X, y)) is (3 or 5) &&
                             ClassProfiles.Identify(image.GetPixel(c.points[1].X, y)).ClassId != 0).ToArray();
@@ -159,14 +183,14 @@ internal static class Calibration
                     {
                         ClientWidth = client.Width, ClientHeight = client.Height,
                         Frames = row.Select(r => new SamplePoint((r.Start + r.End - 1) / 2, y)).ToArray(),
-                        Bars = lower.Skip(j).Take(50).Select(r => new SamplePoint((r.Start + r.End - 1) / 2, by)).ToArray(),
+                        Bars = lower.Skip(j).Take(DisplayProtocol.CellCount).Select(r => new SamplePoint((r.Start + r.End - 1) / 2, by)).ToArray(),
                         Markers = markers, MarkerLayout = candidates[0].kind
                     };
                     layout.Validate(); return layout;
                 }
             }
         }
-        throw new InvalidDataException("未找到完整的 50 个彩色点及第二行。请 /reload 后输入 /hiji locate on，确保顶部色条未被遮挡；UI 缩放过小使两行合并时需调大缩放。");
+        throw new InvalidDataException("未找到完整的 100 个彩色点及第二行。请 /reload 后输入 /hiji locate on，确保顶部色条未被遮挡；UI 缩放过小使两行合并时需调大缩放。");
     }
 }
 
@@ -186,12 +210,13 @@ internal sealed class Heartbeat
     }
 }
 
-internal enum ValueKind { Boolean, Percent, Cooldown, Raw, Special, NonBlack, FuryBoolean }
+internal enum ValueKind { Boolean, Percent, Cooldown, Raw, Special, NonBlack, FuryBoolean, TeamHealth }
 internal sealed record Field(string Id, string Name, ValueKind Kind, bool Bar = false)
 {
     public string Decode(Color color, SampleColor? specialReference = null) => Kind switch
     {
         ValueKind.Percent => $"{color.R / 255.0:P1}",
+        ValueKind.TeamHealth => TeamHealthReading.Decode(color),
         ValueKind.Cooldown => $"编码 {color.R / 255.0:P1}；旧规则{(color.R == 255 ? "就绪" : "未就绪")}",
         ValueKind.Boolean => color.R == 255 ? "是" : "否",
         ValueKind.Special => $"需要施放无视苦痛：{(FZ.IsIgnorePainNeeded(color, specialReference?.ToColor()) ? "是" : "否")}",
@@ -206,9 +231,10 @@ internal static class ProtectionFields
     {
         string[] names = { "战斗且可攻击目标", "附近敌人 ≥ 3", "5 码综合条件", "10 码综合条件", "15 码综合条件", "玩家血量", "怒气比例", "战场军官追踪", "队伍或团队", "目标吸收编码", "治疗石可用", "治疗药水可用", "胜利在望冷却", "盾墙冷却", "盾牌冲锋冷却", "挫志怒吼冷却", "雷霆一击冷却", "天神下凡冷却", "碎裂投掷冷却", "拳击冷却", "建议：盾牌猛击", "建议：雷霆一击", "建议：复仇", "建议：斩杀", "建议：英勇投掷", "胜利在望可用", "袋里乾坤冷却", "餐饮供应商追踪", "目标施法或引导" };
         var fields = Enumerable.Range(1, 50).Select(n => new Field(n.ToString(), n == 30 ? "怒气≥80（原始值阈值）" : n == 31 ? "盾牌冲锋请求已完成（自身冷却/未学习）" : n == 32 ? "天神请求已完成（自身冷却/未学习）" : n <= names.Length ? names[n - 1] : "未定义", n is >= 30 and <= 32 ? ValueKind.FuryBoolean : n is 6 or 7 ? ValueKind.Percent : n is >= 13 and <= 20 or 27 ? ValueKind.Cooldown : n <= 29 ? ValueKind.Boolean : ValueKind.Raw)).ToList();
+        fields.AddRange(Enumerable.Range(51, 50).Select(DisplayProtocol.CommonField));
         fields.Add(new("B1", "盾牌格挡：至少 1 充能", ValueKind.Boolean, true));
         fields.Add(new("B2", "盾牌格挡：2 充能", ValueKind.Boolean, true));
-        fields.Add(new("51", "无视苦痛：特殊判断点", ValueKind.Special));
+        fields.Add(new(DisplayProtocol.SpecialStart.ToString(), "无视苦痛：特殊判断点", ValueKind.Special));
         return fields.ToArray();
     }
 }

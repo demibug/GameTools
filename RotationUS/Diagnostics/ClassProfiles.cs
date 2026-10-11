@@ -28,7 +28,7 @@ internal static class ClassProfiles
     internal static Color Encode(int spec, int classId) => Color.FromArgb(spec % 256, spec / 256, classId);
     internal static ClassProfile? Find(int spec) => All.FirstOrDefault(p => p.SpecId == spec);
     internal static ClassProfile Protection => Find(73)!;
-    internal static Field[] RawFields { get; } = Enumerable.Range(1, 50).Select(i => new Field(i.ToString(), "未定义", ValueKind.Raw)).ToArray();
+    internal static Field[] RawFields { get; } = Enumerable.Range(1, DisplayProtocol.CellCount).Select(DisplayProtocol.CommonField).ToArray();
     private static Field[] Fields(string definitions, string bars = "", bool soul = false)
     {
         var result = RawFields.ToList();
@@ -43,7 +43,7 @@ internal static class ClassProfiles
         {
             var parts = entry.Split('=', 2); result.Add(new("B" + parts[0], parts[1], ValueKind.Boolean, true));
         }
-        if (soul) result.Add(new("51", "灵魂残片：外部特殊点", ValueKind.NonBlack));
+        if (soul) result.Add(new(DisplayProtocol.SpecialStart.ToString(), "灵魂残片：外部特殊点", ValueKind.NonBlack));
         return result.ToArray();
     }
     private static string Resources(int count, string name) => string.Join('|', Enumerable.Range(1, count).Select(i => $"{i}={name}：至少 {i}"));
@@ -52,6 +52,7 @@ internal static class ClassProfiles
         new(73, 1, "fz", "战士", "防护", ProtectionFields.All, () => FZ.Inst.skipKeys, FZ.Inst.Process, true),
         new(72, 1, "kbz", "战士", "狂暴", FuryBuffs.Fields(), () => KBZ.Inst.skipKeys, KBZ.Inst.Process, true),
         new(71, 1, "wqz", "战士", "武器", ArmsBuffs.Fields(), () => WQZ.Inst.skipKeys, WQZ.Inst.Process, true),
+        new(65, 2, "holy", "圣骑士", "神圣", HolyBuffs.Fields(), () => HOLY.Inst.skipKeys, HOLY.Inst.Process, true),
         new(103, 11, "cat", "德鲁伊", "野性", Fields("1=战斗且可攻击目标|2=敌人≥3|3=5码综合条件|4=13码综合条件|5=友方40码条件|P6=玩家血量|P7=能量比例|8=未施法|9=可驱散减益|10=战场军官追踪|11=餐饮供应商追踪|13=目标施法|14=乌索尔状态|15=静止|16=猛虎之怒状态|17=掠食者状态|18=治疗石可用|19=治疗药水可用|C20=公共冷却|C21=狂暴冷却|C22=万灵之召冷却|C23=猛虎之怒冷却|C24=野性狂乱冷却|C25=技能 Chomp冷却|C26=生存本能冷却|C27=打断冷却|C28=驱散冷却|C29=台风冷却|C30=裂伤冷却|32=驱散可用|33=割裂可用|34=毁灭可用|35=凶猛撕咬可用|36=野性狂乱可用|37=撕碎可用|38=斜掠可用|39=技能 Chomp可用|40=愈合可用|41=建议：猛虎之怒|42=建议：割裂|43=建议：凶猛撕咬|44=建议：撕碎|45=建议：斜掠|46=建议：万灵之召|47=建议：技能 Chomp|48=建议：横扫|49=建议：野性狂乱", Resources(5, "连击点")), () => CAT.Inst.skipKeys, CAT.Inst.Process),
         new(104, 11, "bear", "德鲁伊", "守护", Fields("1=战斗且可攻击目标|2=敌人≥3|3=5码综合条件|4=13码综合条件|5=友方40码条件|P6=玩家血量|P7=怒气比例|8=未施法|9=可驱散减益|10=战场军官追踪|12=目标施法|13=铁鬃状态|14=狂暴回复状态|15=乌索尔状态|16=静止|18=治疗石可用|19=治疗药水可用|C20=公共冷却|C21=痛击冷却|C22=裂伤冷却|C23=月神之怒冷却|C24=狂暴回复冷却|C25=生存本能冷却|C26=打断冷却|C27=驱散冷却|C28=台风冷却|C29=安抚冷却|30=狂暴回复可用|31=驱散可用|32=铁鬃可用|33=毁灭可用|34=技能 Raze可用|35=安抚可用|40=建议：月火术"), () => BEAR.Inst.skipKeys, BEAR.Inst.Process),
         new(252, 6, "udk", "死亡骑士", "邪恶", Fields("1=战斗且可攻击目标|2=敌人≥3|3=5码综合条件|4=15码综合条件|5=20码综合条件|P6=玩家血量|P7=符文能量比例|8=战场军官追踪|9=目标引导|10=目标施法|11=治疗石可用|12=治疗药水可用|C13=冰封之韧冷却|14=灵界打击可用|15=凋零缠绕可用|21=建议：爆发|22=建议：亡者大军|23=建议：黑暗突变|24=建议：腐化|25=建议：灵魂收割|26=建议：脓疮打击|27=建议：凋零缠绕|28=建议：天灾打击|29=建议：传染|30=建议：亡者复生", Resources(6, "符文")), () => UDK.Inst.skipKeys, UDK.Inst.Process),

@@ -7,14 +7,14 @@ namespace RotationUS.Diagnostics;
 
 internal static class DiagnosticTests
 {
-    internal static Bitmap Pattern(double scale, int left = 0, int top = 0, int width = 1600, string markerLayout = MarkerLayouts.Wide)
+    internal static Bitmap Pattern(double scale, int left = 0, int top = 0, int width = 1600, string markerLayout = MarkerLayouts.Wide, int cellCount = DisplayProtocol.CellCount, int cellWidth = DisplayProtocol.CellWidth)
     {
         var image = new Bitmap(width, 96);
         using var g = Graphics.FromImage(image); g.Clear(Color.Black);
         Color[] row = { Color.Lime, Color.Blue, Color.Red };
-        for (int i = 1; i <= 50; i++)
+        for (int i = 1; i <= cellCount; i++)
         {
-            int x = left + (int)Math.Round(i * 10 * scale), right = left + (int)Math.Round((i + 1) * 10 * scale);
+            int x = left + (int)Math.Round(i * cellWidth * scale), right = left + (int)Math.Round((i + 1) * cellWidth * scale);
             int firstEnd = top + (int)Math.Round(scale), secondEnd = top + (int)Math.Round(scale * 2);
             using var brush = new SolidBrush(row[(i - 1) % 3]); g.FillRectangle(brush, x, top, right - x, firstEnd - top);
             using var lower = new SolidBrush(i % 2 == 1 ? Color.Magenta : Color.Cyan); g.FillRectangle(lower, x, firstEnd, right - x, secondEnd - firstEnd);
@@ -41,8 +41,10 @@ internal static class DiagnosticTests
         foreach (double scale in new[] { .8, 1, 1.142, 1.25, 1.5, 2 })
         {
             using var image = Pattern(scale, 3, 2);
-            var layout = Calibration.Find(image, new Size(1600, 900));
-            Check(layout.Frames.Length == 50 && layout.Bars.Length == 50, "50+50 scaled points " + scale);
+            DiagnosticLayout layout;
+            try { layout = Calibration.Find(image, new Size(1600, 900)); }
+            catch (InvalidDataException e) { throw new Exception("Calibration scale " + scale,e); }
+            Check(layout.Frames.Length == 100 && layout.Bars.Length == 100, "100+100 scaled points " + scale);
             Check(layout.Frames.Select((p, i) => Colors.Kind(image.GetPixel(p.X, p.Y)) == new[] { 2, 1, 4 }[i % 3]).All(v => v), "centers read upper pattern " + scale);
             Check(layout.Bars.Select((p, i) => Colors.Kind(image.GetPixel(p.X, p.Y)) == (i % 2 == 0 ? 5 : 3)).All(v => v), "second row centers " + scale);
             Check(Colors.Spec(image.GetPixel(layout.Markers[1].X, layout.Markers[1].Y)) == 73, "spec marker " + scale);
@@ -64,8 +66,8 @@ internal static class DiagnosticTests
             Reject(() => Calibration.Find(live, new Size(1600, 900)), "live mode not calibration");
         }
         using var pattern = Pattern(1);
-        Check(ClassProfiles.All.Length == 11 && ClassProfiles.All.Select(p => p.SpecId).Distinct().Count() == 11,
-            "eleven distinct specialization implementations registered");
+        Check(ClassProfiles.All.Length == 12 && ClassProfiles.All.Select(p => p.SpecId).Distinct().Count() == 12,
+            "twelve distinct specialization implementations registered");
         foreach (var profile in ClassProfiles.All)
         {
             var identity = ClassProfiles.Identify(ClassProfiles.Encode(profile.SpecId, profile.ClassId));
@@ -75,8 +77,8 @@ internal static class DiagnosticTests
                 "dispatch selects matching existing class implementation " + profile.Key);
             Check(profile.Fields.Select(f => f.Id).Distinct().Count() == profile.Fields.Length,
                 "no duplicate fields in " + profile.Key);
-            var frames = Enumerable.Range(1, 51).ToDictionary(i => i, _ => Color.Black);
-            var bars = Enumerable.Range(1, 50).ToDictionary(i => i, _ => Color.Black);
+            var frames = Enumerable.Range(1, 101).ToDictionary(i => i, _ => Color.Black);
+            var bars = Enumerable.Range(1, 100).ToDictionary(i => i, _ => Color.Black);
             profile.Process(frames, bars, new Dictionary<int, bool>());
             Check(true, "existing logic consumes matching protocol " + profile.Key);
         }
@@ -143,8 +145,8 @@ internal static class DiagnosticTests
         Check(ProtectionFields.All[^1].Decode(Color.Black).EndsWith("是"), "special legacy black rule");
         Check(ProtectionFields.All[29].Kind == ValueKind.FuryBoolean && ProtectionFields.All[29].Name.Contains("≥80"), "point 30 now carries raw rage threshold rather than Ignore Pain duration");
         var referenceColor = new SampleColor(144, 92, 18);
-        var picked = SpecialPointPicker.ReadPixel(pattern, new Point(14, 0));
-        Check(picked.Point == new SamplePoint(14, 0) && picked.Color == SampleColor.From(Color.Lime), "picker records exact client pixel and RGB");
+        var picked = SpecialPointPicker.ReadPixel(pattern, new Point(7, 0));
+        Check(picked.Point == new SamplePoint(7, 0) && picked.Color == SampleColor.From(Color.Lime), "picker records exact client pixel and RGB");
         Check(SpecialPointPicker.ReadPixel(pattern, new Point(0, 0)).Color == SampleColor.From(Color.Black)
             && SpecialPointPicker.ReadPixel(pattern, new Point(pattern.Width - 1, pattern.Height - 1)).Point.X == pattern.Width - 1,
             "picker reads first and last image pixels without scaling");
@@ -158,32 +160,32 @@ internal static class DiagnosticTests
         finally { File.Delete(path); }
         Check(ProtectionFields.All[^1].Decode(referenceColor.ToColor(), referenceColor).EndsWith("是")
             && ProtectionFields.All[^1].Decode(Color.White, referenceColor).EndsWith("否"), "diagnostic decode matches picked-color rule");
-        var fzFrames = Enumerable.Range(1, 50).ToDictionary(n => n, _ => Color.Black);
+        var fzFrames = Enumerable.Range(1, 100).ToDictionary(n => n, _ => Color.Black);
         var fzBars = new Dictionary<int, Color> { [1] = Color.Black, [2] = Color.Black };
         var fzStates = new Dictionary<int, bool>();
         fzFrames[4] = fzFrames[6] = Color.White;
         fzFrames[7] = Color.FromArgb(128, 128, 128);
         FZ.Inst.IgnorePainReferenceColor = referenceColor.ToColor();
-        fzFrames[51] = Color.Black;
+        fzFrames[101] = Color.Black;
         FZ.Inst.Process(fzFrames, fzBars, fzStates);
         Check(fzStates.GetValueOrDefault(8), "Ignore Pain black special pixel triggers at sufficient rage");
-        fzStates.Clear(); fzFrames[51] = referenceColor.ToColor();
+        fzStates.Clear(); fzFrames[101] = referenceColor.ToColor();
         FZ.Inst.Process(fzFrames, fzBars, fzStates);
         Check(fzStates.GetValueOrDefault(8), "Ignore Pain exact picked RGB also triggers");
-        fzStates.Clear(); fzFrames[51] = Color.FromArgb(144, 92, 19);
+        fzStates.Clear(); fzFrames[101] = Color.FromArgb(144, 92, 19);
         FZ.Inst.Process(fzFrames, fzBars, fzStates);
         Check(!fzStates.GetValueOrDefault(8), "Ignore Pain does not match a different RGB");
-        fzStates.Clear(); fzFrames.Remove(51);
+        fzStates.Clear(); fzFrames.Remove(101);
         FZ.Inst.Process(fzFrames, fzBars, fzStates);
         Check(!fzStates.GetValueOrDefault(8), "unconfigured point is not a black reading");
         fzFrames[7] = Color.FromArgb(157, 157, 157); fzFrames[9] = Color.Black; fzFrames[30] = Color.White;
         FZ.Inst.Process(fzFrames, fzBars, fzStates);
         Check(fzStates.GetValueOrDefault(8), "raw rage 80 fallback works solo at 80/130 without special point");
-        fzStates.Clear(); fzFrames[51] = referenceColor.ToColor(); fzFrames[7] = Color.Black; fzFrames[30] = Color.Black;
+        fzStates.Clear(); fzFrames[101] = referenceColor.ToColor(); fzFrames[7] = Color.Black; fzFrames[30] = Color.Black;
         FZ.Inst.Process(fzFrames, fzBars, fzStates);
         Check(!fzStates.GetValueOrDefault(8), "matching color still respects committed rage threshold");
         FZ.Inst.IgnorePainReferenceColor = null;
-        fzFrames.Remove(51);fzFrames[3]=Color.White;fzFrames[7]=Color.FromArgb(157,157,157);
+        fzFrames.Remove(101);fzFrames[3]=Color.White;fzFrames[7]=Color.FromArgb(157,157,157);
         fzFrames[30]=Color.White;fzFrames[15]=fzFrames[16]=fzFrames[21]=fzFrames[22]=fzFrames[23]=fzFrames[24]=Color.White;
         fzBars[2]=Color.White;fzStates.Clear();FZ.Inst.Process(fzFrames,fzBars,fzStates);
         Check(fzStates.Count==1&&fzStates.GetValueOrDefault(8),"rage 80 Ignore Pain precedes block, demo and all damage skills");
@@ -203,7 +205,7 @@ internal static class DiagnosticTests
         fzFrames[30]=Color.White;fzFrames[4]=Color.Black;fzStates.Clear();FZ.Inst.Process(fzFrames,fzBars,fzStates);
         Check(!fzStates.GetValueOrDefault(8),"Ignore Pain retains 10-yard combat conditions");
         Check(FuryBuffs.Decode(example,ProtectionFields.All[29],Color.Orange).StartsWith("未知"),"raw rage threshold diagnostics distinguish unknown");
-        foreach(int id in Enumerable.Range(1,50)) fzFrames[id]=Color.Black;
+        foreach(int id in Enumerable.Range(1,100)) fzFrames[id]=Color.Black;
         fzFrames[1]=fzFrames[3]=fzFrames[4]=fzFrames[5]=fzFrames[6]=fzFrames[8]=fzFrames[15]=fzFrames[18]=Color.White;
         fzBars[1]=fzBars[2]=Color.Black;fzStates.Clear();FZ.Inst.Process(fzFrames,fzBars,fzStates);
         Check(fzStates.Count==1&&fzStates.GetValueOrDefault(3),"officer requests Avatar before Shield Charge when both are ready");
@@ -225,7 +227,7 @@ internal static class DiagnosticTests
         Check(fzStates.GetValueOrDefault(8),"rage 80 Ignore Pain still precedes shared officer burst requests");
         Check(Colors.Spec(Color.Cyan) == 71 && Colors.Spec(Color.Yellow) == 103 && Colors.Spec(Color.Magenta) == 104, "other specs identified");
         var all = PositionVerification.Check(example, p => pattern.GetPixel(p.X, p.Y));
-        Check(all.Length == 103 && all.All(c => c.Passed), "all position verification points pass");
+        Check(all.Length == 203 && all.All(c => c.Passed), "all position verification points pass");
         using (var corrupt = (Bitmap)pattern.Clone())
         {
             var bad = example.Bars[26]; corrupt.SetPixel(bad.X, bad.Y, Color.Black);
@@ -282,7 +284,7 @@ internal static class DiagnosticTests
             foreground = (IntPtr)99; runner.Tick(game, example, sample, true, 0);
             Check(executions == 0, "background game cannot send keys");
             foreground = game.Handle; runner.Tick(game, example, sample, true, 0);
-            Check(executions == 1 && executedFrames!.Count == 50 && executedBars!.Count == 50,
+            Check(executions == 1 && executedFrames!.Count == 100 && executedBars!.Count == 100,
                 "execution consumes calibrated standard rows");
             Check(executedFrames![30].ToArgb() == sample.At(example.Frames[29]).ToArgb()
                 && executedBars![2].ToArgb() == sample.At(example.Bars[1]).ToArgb(), "execution reads calibrated coordinates including point 30");
@@ -336,13 +338,13 @@ internal static class DiagnosticTests
         using (var sample = new Captured((Bitmap)pattern.Clone(), new Rectangle(Point.Empty, pattern.Size)))
         {
             var specialLayout = example.Copy(); specialLayout.SpecialEnabled = true;
-            specialLayout.Special = new(14, 0); specialLayout.SpecialReferenceColor = referenceColor;
+            specialLayout.Special = new(7, 0); specialLayout.SpecialReferenceColor = referenceColor;
             runner.Start(); runner.Tick(game, specialLayout, sample, true, 3);
-            Check(executedFrames!.ContainsKey(51) && executedFrames[51].ToArgb() == Color.Lime.ToArgb()
+            Check(executedFrames!.ContainsKey(101) && executedFrames[101].ToArgb() == Color.Lime.ToArgb()
                 && FZ.Inst.IgnorePainReferenceColor?.ToArgb() == referenceColor.ToColor().ToArgb(),
                 "execution consumes configured special point and reference color");
             specialLayout.SpecialEnabled = false; runner.Tick(game, specialLayout, sample, true, 3.1);
-            Check(!executedFrames.ContainsKey(51) && FZ.Inst.IgnorePainReferenceColor is null,
+            Check(!executedFrames.ContainsKey(101) && FZ.Inst.IgnorePainReferenceColor is null,
                 "disabling special point removes its previous reading and reference");
             runner.Stop();
         }
@@ -400,6 +402,8 @@ internal static class DiagnosticTests
         }
         count += FloatingWindowTests.Run();
         count += ArmsTests.Run();
+        count += HolyTests.Run();
+        count += ExpandedProtocolTests.Run();
         Console.WriteLine($"PASS: {count} diagnostic checks. Synthetic pixels only; no input sent.");
     }
     public static void Render(string path, bool position = false)
@@ -412,12 +416,14 @@ internal static class DiagnosticTests
         using (var g = Graphics.FromImage(image))
         {
             g.Clear(Color.Black);
-            for (int i = 0; i < 50; i++)
+            for (int i = 0; i < 100; i++)
             {
                 var color = i == 5 ? Color.FromArgb(220, 220, 220) : i == 6 ? Color.FromArgb(160, 160, 160) : i % 4 == 0 ? Color.White : Color.Black;
-                using var brush = new SolidBrush(color); g.FillRectangle(brush, 10 + i * 10, 0, 10, 1);
+                if (i is >= 50 and < 90) color = i == 51 ? Color.Blue : i == 52 ? Color.Black : i == 53 ? Color.Orange : Color.FromArgb((i-50)*255/39,255,0);
+                if (i >= 90) color = Color.Black;
+                using var brush = new SolidBrush(color); g.FillRectangle(brush, 5 + i * 5, 0, 5, 1);
             }
-            g.FillRectangle(Brushes.White, 10, 1, 20, 1);
+            g.FillRectangle(Brushes.White, 5, 1, 10, 1);
             g.FillRectangle(Brushes.Lime, 740, 0, 10, 3); g.FillRectangle(Brushes.Blue, 750, 0, 10, 3); g.FillRectangle(Brushes.Cyan, 760, 0, 10, 3);
         }
         var isolatedLogs = new SavedLogStore(Path.Combine(Path.GetTempPath(), "RotationUS-ui-" + Guid.NewGuid().ToString("N")));
@@ -474,11 +480,15 @@ internal static class DiagnosticTests
                     "UI switches class label and data fields " + profile.Key);
                 Check(pickButton.Enabled == profile.HasSpecial && !saveSpecial.Enabled,
                     "class switching resets special point controls " + profile.Key);
+                Check(Equals(displayGrid.Rows[51].Cells[5].Value,"离线") && Equals(displayGrid.Rows[52].Cells[5].Value,"空位") &&
+                    displayGrid.Rows[53].Cells[5].Value!.ToString()!.StartsWith("未知"),"shared HP status in UI " + profile.Key);
             }
             var m2 = layout.Markers[1]; image.SetPixel(m2.X, m2.Y, ClassProfiles.Encode(62, 8));
             form.ShowSynthetic(layout, image);
-            Check(displayGrid.Rows.Count == 50 && !pickButton.Enabled, "unsupported class shows raw fields without protection controls");
+            Check(displayGrid.Rows.Count == 100 && !pickButton.Enabled, "unsupported class shows raw fields without protection controls");
             image.SetPixel(m2.X, m2.Y, ClassProfiles.Encode(73, 1)); form.ShowSynthetic(layout, image);
+            displayGrid.CurrentCell=displayGrid.Rows[50].Cells[0]; displayGrid.FirstDisplayedScrollingRowIndex=50;
+            Check(Descendants(form).OfType<PixelPreview>().Single().Selected == 50,"HP51 selection highlights its actual small cell");
         }
         using var rendered = new Bitmap(form.Width, form.Height); form.DrawToBitmap(rendered, new Rectangle(Point.Empty, rendered.Size));
         rendered.Save(Path.GetFullPath(path), ImageFormat.Png);

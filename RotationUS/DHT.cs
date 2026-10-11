@@ -85,7 +85,7 @@ class DHT
 
     private int m_idxFireSigilRecommend = 40;
 
-    private int m_idxSoulShape = 51;
+    private int m_idxSoulShape = RotationUS.Diagnostics.DisplayProtocol.SpecialStart;
 
     private int m_idxPolieCharge1 = 1;
     private int m_idxPolieCharge2 = 2;
