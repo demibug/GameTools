@@ -6,10 +6,11 @@ namespace RotationUS.Diagnostics;
 // This is an observation/rate-limit policy, never evidence that a key cast a
 // spell, that Wings is active, or that any particular unit carries a Beacon.
 internal sealed record HolyCooldownContext(bool Holding=false,int LastKey=0,bool Retry=false,
-    bool Worsening=false,bool Sustained=false)
+    bool Worsening=false,bool Sustained=false,IReadOnlySet<int>? ThrottledKeys=null)
 {
-    internal bool Allows(int key,bool emergency=false)=>!Holding||
-        (Retry&&(key==LastKey||Worsening||emergency));
+    // Holding is a repeat-request throttle, not a shared cooldown waiting period.
+    internal bool Allows(int key,bool emergency=false)=>ThrottledKeys is not null?
+        !ThrottledKeys.Contains(key):!Holding||key!=LastKey;
 }
 
 internal sealed class HolyPressure
@@ -18,11 +19,12 @@ internal sealed class HolyPressure
     private Snapshot? baseline,attempt;
     private double baselineAt,lastAt,lastAttempt=double.NegativeInfinity,worseningUntil;
     private int lastKey;
+    private readonly Dictionary<int,double> requestedAt=new();
 
     internal void Reset()
     {
         baseline=attempt=null;baselineAt=lastAt=worseningUntil=0;
-        lastAttempt=double.NegativeInfinity;lastKey=0;
+        lastAttempt=double.NegativeInfinity;lastKey=0;requestedAt.Clear();
     }
 
     private static Snapshot? Read(Dictionary<int,Color> frames,HealingThresholds t)
@@ -48,18 +50,22 @@ internal sealed class HolyPressure
 
     internal HolyCooldownContext Observe(Dictionary<int,Color> frames,HealingThresholds t,double now)
     {
+        HolyCooldownContext Context(bool worsening=false,bool sustained=false) {
+            var blocked=requestedAt.Where(p=>now-p.Value<.5).Select(p=>p.Key).ToHashSet();
+            return new(blocked.Count>0,lastKey,now-lastAttempt>=.5,worsening,sustained,blocked);
+        }
         var current=Read(frames,t);
         if(current is null) {
             bool Confirmed(int id)=>frames.TryGetValue(id,out var c)&&FuryBuffs.Boolean(c)==true;
             if(!Confirmed(1)||!Confirmed(2)||!Confirmed(96)||!Confirmed(100)) {Reset();return new();}
-            // Missing roster data cannot prove recovery or deterioration, and
-            // must not cancel the short cooldown observation interval.
+            // Missing roster data cannot prove improvement/deterioration.
+            // It does not erase the per-key request throttle.
             baseline=attempt=null;worseningUntil=0;lastAt=now;
-            double elapsed=now-lastAttempt;
-            return new(elapsed<t.CooldownReviewSeconds,lastKey,elapsed>=.5);
+            return Context();
         }
         if((baseline is not null&&!Comparable(current,baseline))||now<lastAt||now-lastAt>Math.Max(3,t.CooldownReviewSeconds*2)) {
-            Reset();baseline=current;baselineAt=now;
+            if(now<lastAt) Reset();
+            baseline=current;attempt=null;worseningUntil=0;baselineAt=now;
         }
         if(baseline is null) {baseline=current;baselineAt=now;}
         lastAt=now;
@@ -70,19 +76,18 @@ internal sealed class HolyPressure
             baseline=current;baselineAt=now;
         }
         bool sustained=current.Aoe&&now<worseningUntil;
-        double age=now-lastAttempt;
-        // Party Virtue gets a chance to work before another cooldown. Raid
-        // follow-up may proceed, but this does not claim Virtue is active.
-        bool holding=age<.5||(age<t.CooldownReviewSeconds&&(lastKey!=15||!current.Raid));
-        return new(holding,lastKey,age>=.5,worsening||sustained,sustained);
+        // CooldownReviewSeconds remains a compatible damage-trend sample
+        // window. It never delays Virtue or another available cooldown.
+        return Context(worsening||sustained,sustained);
     }
 
     internal void Requested(int key,Dictionary<int,Color> frames,HealingThresholds t,double now)
     {
         if(key is not (4 or 10 or 13 or 14 or 15)) return;
-        // Retrying the same unacknowledged request must not extend the review
-        // interval forever. No cooldown/buff state is inferred here.
-        if(key==lastKey&&now-lastAttempt<t.CooldownReviewSeconds) return;
+        requestedAt[key]=now;
+        // Virtue only limits repeated requests for itself. It neither starts a
+        // large-cooldown review nor resets the observed pressure history.
+        if(key==15) return;
         attempt=Read(frames,t);lastAttempt=now;lastKey=key;
         // A pre-existing worsening signal justified this request; it must not
         // also authorize the next cooldown without fresh deterioration.

@@ -37,7 +37,15 @@ CreateFrame=function(kind,...)
 end
 function IsInGroup() return true end
 function IsInRaid() return false end
-C_Spell.IsSpellInRange=function(id,unit) return secret(ranges[unit] or false) end
+C_Spell.IsSpellInRange=function(id,unit)
+    assert(id~=96231 and id~=35395 and id~=53600,"Holy melee range must not query any skill")
+    return secret(ranges[unit] or false)
+end
+C_Item.IsItemInRange=function(id,unit)
+    assert(id==8149 or id==136605 or id==63427,"unexpected melee range item")
+    assert(unit=="target")
+    return true
+end
 -- Mock only the native evaluator; addon must never branch on these booleans.
 C_CurveUtil.EvaluateColorFromBoolean=function(v,yes,no)
     if issecretvalue(v) then return v.value and yes or no end
@@ -112,7 +120,7 @@ assert(HijiAddon.frame_11.shown and rgb(HijiAddon.texture_11,1,1,1),"food collec
 tracking[1].active=false;HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_11,0,0,0))
 trackingFail=true;HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_11,1,.5,0),"food collection failures stay unknown")
 trackingFail=false;tracking={};HijiAddon.UpdateHoly()
-for _,index in ipairs({14,15}) do assert(rgb(HijiAddon["texture_"..index],0,0,0) and not HijiAddon["frame_"..index].shown,"removed interrupt slots reserved") end
+for _,index in ipairs({14,15,18}) do assert(rgb(HijiAddon["texture_"..index],0,1,0) and HijiAddon["frame_"..index].shown,"item range evidence slots visible") end
 assert(HijiAddon.frame_13.shown and HijiAddon.holyThresholdBars[13].shown)
 assert(HijiAddon.holyThresholdBars[13].min==1 and HijiAddon.holyThresholdBars[13].max==2 and issecretvalue(HijiAddon.holyThresholdBars[13].value))
 assert(named.HijiAddonHolyEvents==nil and HijiAddon.ResetHolyTimer==nil)
@@ -121,11 +129,65 @@ assert(rgb(HijiAddon.texture_98,1,1,1) and HijiAddon.frame_98.shown)
 assert(rgb(HijiAddon.texture_96,1,1,1))
 assert(rgb(HijiAddon.texture_100,1,1,1) and HijiAddon.frame_95.shown and rgb(HijiAddon.texture_95,1,1,1))
 assert(HijiAddon.frame_41.shown and rgb(HijiAddon.texture_41,0,0,0),"shield tail fields do not overwrite raid mode")
-ranges.target=false;HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_95,0,0,0));ranges.target=true
-local shieldRangeAPI=C_Spell.IsSpellInRange
-C_Spell.IsSpellInRange=function(id,unit) if id==96231 then return nil end;return shieldRangeAPI(id,unit) end
-HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_95,1,.5,0),"unknown melee range forbids shield")
-C_Spell.IsSpellInRange=shieldRangeAPI;HijiAddon.UpdateHoly()
+-- Real collector matrix: a later true overrides an earlier false; secret,
+-- nil, invalid and error results cannot authorize melee. Every item is logged.
+local savedItemRange=C_Item.IsItemInRange
+local probes={{14,8149},{15,136605},{18,63427}}
+local cases={"in","out","nil","secret-in","secret-out","error","invalid"}
+local palette={['in']={0,1,0},['out']={1,0,0},['nil']={1,.5,0},
+    ['secret-in']={.5,0,1},['secret-out']={.5,0,1},['error']={1,0,1},['invalid']={1,.5,0}}
+local answers,calls={},{}
+C_SpellBook.IsSpellBookItemInRange=function() error("Holy must not query spellbook melee range") end
+C_Item.IsItemInRange=function(id,unit)
+    assert(unit=="target");calls[id]=(calls[id] or 0)+1
+    local answer=answers[id]
+    if answer=="in" then return true end
+    if answer=="out" then return false end
+    if answer=="secret-in" then return secret(true) end
+    if answer=="secret-out" then return secret(false) end
+    if answer=="error" then error("item range unavailable") end
+    if answer=="invalid" then return 1 end
+    return nil
+end
+for _,a in ipairs(cases) do for _,b in ipairs(cases) do for _,c in ipairs(cases) do
+    answers={[8149]=a,[136605]=b,[63427]=c};calls={}
+    HijiAddon.UpdateHoly()
+    local expected=(a=="in" or b=="in" or c=="in") and {1,1,1}
+        or (a=="out" or b=="out" or c=="out") and {0,0,0} or {1,.5,0}
+    assert(rgb(HijiAddon.texture_95,table.unpack(expected)),"item merged result: "..a..","..b..","..c)
+    for _,entry in ipairs(probes) do
+        assert(calls[entry[2]]==1,"each item must be queried exactly once")
+        assert(rgb(HijiAddon["texture_"..entry[1]],table.unpack(palette[answers[entry[2]]])),"independent item status")
+    end
+end end end
+local savedAttackable=UnitCanAttack
+local function assertSkipped()
+    assert(next(calls)==nil,"invalid/protected target must not enter item range API")
+    for _,entry in ipairs(probes) do assert(rgb(HijiAddon["texture_"..entry[1]],0,0,1),"previous target item evidence cleared") end
+end
+for _,case in ipairs({"friendly","secret","missing","error"}) do
+    -- Start each gate case with positive enemy evidence to detect stale values.
+    UnitCanAttack=savedAttackable;answers={[8149]="in"};HijiAddon.UpdateHoly();calls={}
+    UnitCanAttack=function()
+        if case=="friendly" then return false end
+        if case=="secret" then return secret(true) end
+        if case=="error" then error("attackability unavailable") end
+        return nil
+    end
+    HijiAddon.UpdateHoly();assertSkipped()
+    local expected=case=="friendly" and {0,0,0} or {1,.5,0}
+    assert(rgb(HijiAddon.texture_95,table.unpack(expected)),"target gate: "..case)
+end
+UnitCanAttack=savedAttackable;calls={};dead.target=true
+HijiAddon.UpdateHoly();assertSkipped();assert(rgb(HijiAddon.texture_95,0,0,0))
+dead.target=false
+C_Item.IsItemInRange=nil;HijiAddon.UpdateHoly()
+assert(rgb(HijiAddon.texture_95,1,.5,0),"missing item API is unknown")
+for _,entry in ipairs(probes) do assert(rgb(HijiAddon["texture_"..entry[1]],0,1,1),"missing API evidence") end
+C_Item.IsItemInRange=savedItemRange;C_SpellBook.IsSpellBookItemInRange=nil
+-- Removing both melee skills does not affect item-based range at all.
+unknownSpells[96231]=true;unknownSpells[35395]=true
+HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_95,1,1,1))
 -- Reproduce the live restricted-speed failure: only a native StatusBar may
 -- receive the value. Its black fill hides white when moving, including tiny
 -- nonzero speed; no Lua comparison or color-curve evaluation is permitted.
@@ -153,7 +215,7 @@ assert(HijiAddon.holyThresholdBars[22].min==0 and HijiAddon.holyThresholdBars[22
 assert(rgb(HijiAddon.texture_93,1,1,1) and rgb(HijiAddon.texture_94,0,0,0))
 handPresent=true;HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_94,1,1,1))
 handPresent=false;HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_94,0,0,0))
-assert(rgb(HijiAddon.texture_18,0,0,0) and not HijiAddon.frame_18.shown)
+assert(rgb(HijiAddon.texture_18,0,1,0) and HijiAddon.frame_18.shown)
 assert(HijiAddon.frame_30.shown and HijiAddon.frame_40.shown,"Protection cooldown/usability visible")
 -- Every unlearned priority spell is black in both fields, without querying it.
 local originalKnown,originalPlayerSpell=C_SpellBook.IsSpellKnown,IsPlayerSpell
@@ -171,7 +233,7 @@ for i,id in ipairs({20271,20473,85673,375576,19750,82326,31884,31821,200025,498,
     unlearned=id;HijiAddon.UpdateHoly()
     local readyIndex,usableIndex=i==11 and 97 or 20+i,i==11 and 98 or 30+i
     assert(rgb(HijiAddon["texture_"..readyIndex],0,0,0) and rgb(HijiAddon["texture_"..usableIndex],0,0,0))
-    if i==11 then assert(rgb(HijiAddon.texture_95,0,0,0)) end
+    if i==11 then assert(rgb(HijiAddon.texture_95,1,1,1),"range remains independent of unlearned Shield readiness") end
     if i==2 then assert(not HijiAddon.holyThresholdBars[22].shown and not HijiAddon.holyThresholdBars[13].shown and rgb(HijiAddon.texture_13,0,0,0)) end
     if i==5 then assert(rangeSpells[82326] and rgb(HijiAddon.texture_5,1,1,1),"learned Holy Light replaces missing Flash range") end
 end
@@ -220,7 +282,7 @@ assert(rgb(HijiAddon.texture_13,1,.5,0) and not HijiAddon.holyThresholdBars[13].
 chargeFail=false;charges=1;HijiAddon.UpdateHoly();assert(HijiAddon.holyThresholdBars[13].shown and HijiAddon.holyThresholdBars[13].value.value==1)
 C_Spell.GetSpellCooldownDuration,C_Spell.GetSpellCooldown=originalCooldown,originalInfo
 restricted=true;HijiAddon.UpdateHoly()
-assert(rgb(HijiAddon.texture_18,0,0,0) and not HijiAddon.frame_18.shown)
+assert(rgb(HijiAddon.texture_18,0,1,0) and HijiAddon.frame_18.shown)
 for i=93,94 do assert(rgb(HijiAddon["texture_"..i],1,.5,0) and HijiAddon.holyThresholdBars[i]==nil) end
 restricted=false;infusionPresent=false;handPresent=false;HijiAddon.UpdateHoly()
 for i=93,94 do assert(rgb(HijiAddon["texture_"..i],0,0,0)) end
@@ -237,4 +299,4 @@ assert(not HijiAddon.holyThresholdBars[13].shown,"two-charge bar cleared after s
 function UnitExists(unit) return unit=="player" end
 dead.player=true;HijiAddon.UpdateTeamHealth();assert(rgb(HijiAddon.texture_51,0,1,0),tostring(HijiAddon.texture_51.r)..","..tostring(HijiAddon.texture_51.g)..","..tostring(HijiAddon.texture_51.b))
 ''')
-print("PASS: Holy Healthstone5512/potion boolean and legacy numeric item cooldown flags, inventory, active/expired/disabled cooldowns, restricted/missing/invalid inputs and API failure/recovery; food collection retained (active/inactive/unknown), interrupt slots reserved without target cast or Rebuke cooldown queries, 12-spell/GCD cooldown nil-handle ready/active/disabled/unknown matrix including Divine Protection and Shield without reading secret times, separate native one/two Holy Shock charge thresholds with stale-fill clearing and nil/error/unlearned handling, charge and non-charge Holy Shock readiness, manual Lay/Forbearance excluded, Infusion/Hand presence without reading stacks, unlearned spells skipped and relearned spells restored, learned healing range and Shield five-yard proxy fallback, mana type, native secret holy-power display, forbidden aura fallback, reserved95/97/98 repurposed for Shield without moving raid fields, roster death/ghost handling, 91..100 preservation and clearing after spec change.")
+print("PASS: Holy item-only five-yard range: 343 result combinations (true/false/nil/secret true/secret false/error/invalid), independent 8149/136605/63427 evidence, true overrides false, forbidden friendly/secret/missing/error/dead target queries, stale target evidence cleared, missing API, no melee skill or spellbook probes, range independent of Shield knowledge; existing item cooldown, food, learned healing range, native secret movement/resource/charges, cooldown recovery, manual Lay/Forbearance, proc and roster regressions preserved.")

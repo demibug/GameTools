@@ -24,6 +24,7 @@ internal sealed class DiagnosticForm : Form
     private DiagnosticLayout? samplingLayout;
     private Rectangle samplingBounds;
     private string lastUnknownReason = "";
+    private string lastHolyExecutionReason = "";
     private bool batchingLogs;
     private readonly CheckBox specialEnabled = new() { Text = "启用特殊点 101", AutoSize = true };
     private readonly FuryPointSettings furyPoints = new();
@@ -31,6 +32,7 @@ internal sealed class DiagnosticForm : Form
     private readonly HolyPointSettings holyPoints = new();
     private readonly TableLayoutPanel holySettings = new() { Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Visible=false };
     private readonly FlowLayoutPanel holyOptions = new() { Dock=DockStyle.Fill,WrapContents=false };
+    private readonly CheckBox holyRaidMastery = new() { Text="团本自动光环掌握",Name="holyRaidMastery",AutoSize=true,Checked=true,Padding=new Padding(0,3,0,0) };
     private readonly TableLayoutPanel armsSettings = new() { Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Visible=false };
     private readonly FlowLayoutPanel armsOptions = new() { Dock=DockStyle.Fill,WrapContents=false };
     private readonly FlowLayoutPanel legacySettings = new() { Dock=DockStyle.Fill,WrapContents=true };
@@ -66,6 +68,9 @@ internal sealed class DiagnosticForm : Form
     private bool modalOperation;
     private string exportDirectory;
     private readonly SavedLogStore savedLogs;
+    private readonly HolyShieldLog holyShieldLog;
+    private bool shieldLogAnnounced;
+    private string? shieldLogError;
     private readonly StableLocator locator = new();
     private string layoutPath => activeProfile is null ? profileLayouts.DiscoveryPath : profileLayouts.PathFor(activeProfile);
     private readonly Dictionary<string, string> lastValues = new();
@@ -86,6 +91,7 @@ internal sealed class DiagnosticForm : Form
         RotationExecution? execution = null)
     {
         this.savedLogs = savedLogs ?? new SavedLogStore(AppContext.BaseDirectory);
+        holyShieldLog=new HolyShieldLog(this.savedLogs);
         this.profileLayouts = profileLayouts ?? new ProfileLayouts(AppContext.BaseDirectory);
         this.execution = execution ?? new RotationExecution();
         var floatingSettings = new FloatingWindowSettings(Path.GetDirectoryName(this.profileLayouts.DiscoveryPath)!);
@@ -174,9 +180,25 @@ internal sealed class DiagnosticForm : Form
             if(updated.SpecialPoints.TryGetValue(key,out var point)) point.Enabled=false;
             SaveSpecialLayout(updated,key);
         };
-        holySettings.RowStyles.Add(new(SizeType.Absolute,220));
         holySettings.RowStyles.Add(new(SizeType.Percent,100));
+        holySettings.RowStyles.Add(new(SizeType.Absolute,38));
         holySettings.Controls.Add(holyPoints,0,0);holySettings.Controls.Add(holyOptions,0,1);
+        holyOptions.Controls.Add(holyRaidMastery);
+        loopTooltip.SetToolTip(holyRaidMastery,"默认开启。关闭后团本光环掌握由你手动释放；小队不受此开关影响。自动群疗须已确认附带鸣钟天赋。");
+        holyRaidMastery.CheckedChanged+=(_,_)=>
+        {
+            if(updatingControls||layout is null||activeProfile?.SpecId!=65) return;
+            var previous=layout;var updated=previous.Copy();
+            updated.HolyThresholds=updated.HolyThresholds with{RaidAutoAuraMastery=holyRaidMastery.Checked};
+            try {
+                this.profileLayouts.Save(activeProfile,updated);layout=updated;
+                samplingLayout=null;presentation.Reset();lastHolyExecutionReason="";
+                AddLog("团本自动光环掌握："+(holyRaidMastery.Checked?"开启":"关闭（手动释放）")+"；已保存");
+            } catch(Exception e) {
+                updatingControls=true;holyRaidMastery.Checked=previous.HolyThresholds.RaidAutoAuraMastery;updatingControls=false;
+                SetStatus("无法保存光环掌握开关："+e.Message);
+            }
+        };
         armsSettings.RowStyles.Add(new(SizeType.Percent,100));
         armsSettings.Controls.Add(armsPoints,0,0);
         armsSettings.Controls.Add(armsOptions,0,1);
@@ -346,12 +368,14 @@ internal sealed class DiagnosticForm : Form
         furyPoints.LoadSettings(fury?layout:null,committedFuryKey);
         armsPoints.LoadSettings(arms?layout:null,committedFuryKey);
         holyPoints.LoadSettings(holy?layout:null,committedFuryKey);
+        holyRaidMastery.Enabled=holy&&layout is not null;
         if (layout is null) return;
         updatingControls = true;
         specialEnabled.Text = "启用特殊点 101";
         specialEnabled.Checked = layout.SpecialEnabled;
         specialX.Value = Math.Min(specialX.Maximum, layout.Special.X); specialY.Value = Math.Min(specialY.Maximum, layout.Special.Y);
         thunderMode.SelectedIndex = layout.ThunderMode == "exact-stacks" ? 1 : 0;
+        holyRaidMastery.Checked=layout.HolyThresholds.RaidAutoAuraMastery;
         specialColor.Text = !special ? "当前专精不使用特殊点。" : activeProfile?.SpecId == 581
             ? $"复仇特殊点：沿用非黑判断；取色 RGB：{layout.SpecialReferenceColor?.ToString() ?? "未采集"}。"
             : $"无视苦痛：纯黑或等于取色 RGB 时需要施放；取色 RGB：{layout.SpecialReferenceColor?.ToString() ?? "未采集（只判断纯黑）"}。";
@@ -604,6 +628,7 @@ internal sealed class DiagnosticForm : Form
                 throw new InvalidOperationException("游戏尺寸已变化，请重新定位后开启执行。");
             frozen = false; pause.Text = "暂停查看"; heartbeat.Reset();
             execution.Start(activeProfile); timer.Interval = 30;
+            lastHolyExecutionReason = "";
             presentation.Reset();
             run.Text = "关闭执行（中键）"; executionStatus.Text = "执行等待有效职业数据 / 心跳";
             AddLog($"执行已开启：{activeProfile.DisplayName}；使用对应配置、执行代码与原键位。");
@@ -643,6 +668,21 @@ internal sealed class DiagnosticForm : Form
             string reason = mode == 4 ? "定位图案" : activeProfile is null ? identity.DisplayName : mode != 2 ? "插件尚未输出 / 需重载 / 坐标不匹配" : !alive ? "心跳等待或超过 1.5 秒未变化" : "";
             // Execute from the fresh sample before any table, log or preview work.
             string executionText = activeProfile is null ? "执行已关闭" : execution.Tick(game, layout, next, live, clock.Elapsed.TotalSeconds, activeProfile);
+            if(activeProfile?.SpecId==65) {
+                holyShieldLog.Record(next,layout,live,execution.Enabled,executionText,clock.Elapsed.TotalSeconds);
+                if(holyShieldLog.Started&&!shieldLogAnnounced) {
+                    shieldLogAnnounced=true;AddLog("盾击自动诊断日志："+holyShieldLog.Path);
+                }
+                if(holyShieldLog.Error is {} error&&error!=shieldLogError) {
+                    shieldLogError=error;AddLog("盾击诊断日志写入失败："+error);
+                }
+            }
+            // Record changed execution judgments even while the table is hidden.
+            // This reports requests/waits, not successful spell casts.
+            if (execution.Enabled && activeProfile?.SpecId == 65 && executionText != lastHolyExecutionReason) {
+                lastHolyExecutionReason = executionText;
+                AddLog("神圣执行判断：" + executionText);
+            }
             if (!presentation.Due(clock.Elapsed.TotalSeconds, Visible && !inFloatingMode && WindowState != FormWindowState.Minimized)) return;
             // The preview/export owns a stable copy; it never triggers another screen capture.
             ReplaceCapture(new Captured((Bitmap)next.Image.Clone(), next.Bounds));

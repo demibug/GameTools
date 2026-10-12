@@ -404,6 +404,7 @@ internal static class DiagnosticTests
         count += ArmsTests.Run();
         count += HolyTests.Run();
         count += HolyPolicyTests.Run();
+        count += HolyShieldLog.RunTests();
         count += ExpandedProtocolTests.Run();
         Console.WriteLine($"PASS: {count} diagnostic checks. Synthetic pixels only; no input sent.");
     }

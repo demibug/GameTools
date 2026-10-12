@@ -489,8 +489,30 @@ internal static class HolyTests
         form.Show();Application.DoEvents();form.FreezeForTesting();form.ShowSynthetic(layout,pixels);
         static IEnumerable<Control> All(Control p)=>p.Controls.Cast<Control>().SelectMany(c=>new[]{c}.Concat(All(c)));
         var settings=All(form).OfType<HolyPointSettings>().Single();
+        var raidMastery=All(form).OfType<CheckBox>().Single(c=>c.Name=="holyRaidMastery");
+        if(!raidMastery.Checked) throw new Exception("Raid automatic Mastery must default on");
+        settings.Stage("holy_i1",new(new(550,8),new(255,255,255)));
+        raidMastery.Checked=false;
+        var saved=DiagnosticLayout.Load(profiles.PathFor(ClassProfiles.Find(65)!));
+        if(saved.HolyThresholds.RaidAutoAuraMastery||!saved.HolyThresholds.AutoAuraMastery||settings.Rows["holy_i1"].Pending is null)
+            throw new Exception("Raid manual switch must persist without disabling party automation or losing pending buff selection");
+        // Recreate the form to verify that loading a saved false does not
+        // accidentally save the checkbox's default true over the preference.
+        using(var reloaded=new DiagnosticForm(false,profileLayouts:profiles)) {
+            reloaded.Show();Application.DoEvents();reloaded.FreezeForTesting();reloaded.ShowSynthetic(layout,pixels);
+            if(All(reloaded).OfType<CheckBox>().Single(c=>c.Name=="holyRaidMastery").Checked||
+                DiagnosticLayout.Load(profiles.PathFor(ClassProfiles.Find(65)!)).HolyThresholds.RaidAutoAuraMastery)
+                throw new Exception("Raid manual preference must survive restarting the form");
+            reloaded.Close();
+        }
+        raidMastery.Checked=true;
+        if(!DiagnosticLayout.Load(profiles.PathFor(ClassProfiles.Find(65)!)).HolyThresholds.RaidAutoAuraMastery)
+            throw new Exception("Re-enabling raid automatic Mastery must persist");
         foreach(var size in new[]{new Size(1180,800),new Size(950,650)}) {
             form.ClientSize=size;form.Refresh();Application.DoEvents();
+            var switchParent=raidMastery.Parent??throw new Exception("Raid Mastery switch has no parent");
+            if(!raidMastery.Visible||!raidMastery.Enabled||raidMastery.Right>switchParent.ClientSize.Width||raidMastery.Bottom>switchParent.ClientSize.Height)
+                throw new Exception($"Raid automatic Mastery switch clipped: size={size}, visible={raidMastery.Visible}, enabled={raidMastery.Enabled}, bounds={raidMastery.Bounds}, parent={switchParent.ClientSize}");
             foreach(var row in settings.Rows.Values)
                 if(!row.Pick.Visible||!row.Disable.Enabled||row.Save.Right>row.Save.Parent!.ClientSize.Width||row.Pick.Bottom>row.Pick.Parent!.ClientSize.Height) throw new Exception("Holy settings clipped");
         }
@@ -499,6 +521,6 @@ internal static class HolyTests
         form.Close();
         foreach(string file in Directory.GetFiles(Path.Combine(directory,"profiles"))) File.Delete(file);
         Directory.Delete(Path.Combine(directory,"profiles"));Directory.Delete(directory);
-        Console.WriteLine("PASS: Holy UI three rows at 1180x800 and 950x650; "+path);
+        Console.WriteLine("PASS: Holy UI three rows and default-on raid Mastery switch at 1180x800 and 950x650; manual/auto persistence, restart and pending buff selection preserved; "+path);
     }
 }

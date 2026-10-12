@@ -61,7 +61,8 @@ internal sealed class RotationExecution
         if (execute is not null) execute(frames, bars);
         else global::Program.ExecuteClassSample(profile, frames, bars);
         if (profile.SpecId == 65) {
-            return HOLY.Inst.LastDecision.Reason;
+            string hint=HolyBuffs.InstantSourceHint(layout,frames,HOLY.Inst.Buffs);
+            return HOLY.Inst.LastDecision.Reason+(hint.Length>0?" · "+hint:"");
         }
         return profile.SpecId == 71 ? $"{WQZ.Inst.LastDecision.Branch} · {WQZ.Inst.LastDecision.Reason}" : profile.SpecId == 72 ? $"{KBZ.Inst.LastDecision.Branch} · {KBZ.Inst.LastDecision.Reason} · {(KBZ.Inst.LastDecision.Mode.Length > 0 ? KBZ.Inst.LastDecision.Mode : layout.ThunderMode)}" : "执行已开启 · " + profile.DisplayName;
     }
