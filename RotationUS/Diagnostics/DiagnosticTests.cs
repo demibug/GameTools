@@ -403,6 +403,7 @@ internal static class DiagnosticTests
         count += FloatingWindowTests.Run();
         count += ArmsTests.Run();
         count += HolyTests.Run();
+        count += HolyPolicyTests.Run();
         count += ExpandedProtocolTests.Run();
         Console.WriteLine($"PASS: {count} diagnostic checks. Synthetic pixels only; no input sent.");
     }

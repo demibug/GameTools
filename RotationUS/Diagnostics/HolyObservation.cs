@@ -58,30 +58,39 @@ internal sealed class HolyBuffs
 
 internal sealed record HealingThresholds(double Critical=.20,double Major=.60,double HealBelow=.85,
     double GroupLow=.70,double GroupCritical=.50,double RaidLowFraction=.30,double RaidCriticalFraction=.20,
-    double MinimumCoverage=.75,double HolyLightMana=.30)
+    double MinimumCoverage=.75,double HolyLightMana=.30,
+    double TollLow=.80,double TollCritical=.60,double CooldownReviewSeconds=2,
+    bool AutoWings=true,bool AutoAuraMastery=false,bool AuraMasteryHasToll=false,
+    bool RaidAutoWings=true,bool RaidAutoAuraMastery=false)
 {
     internal void Validate()
     {
-        double[] values={Critical,Major,HealBelow,GroupLow,GroupCritical,RaidLowFraction,RaidCriticalFraction,MinimumCoverage,HolyLightMana};
-        if(values.Any(v=>!double.IsFinite(v)||v<=0||v>1)||Critical>=Major||Major>=HealBelow||GroupCritical>=GroupLow)
+        double[] values={Critical,Major,HealBelow,GroupLow,GroupCritical,RaidLowFraction,RaidCriticalFraction,MinimumCoverage,HolyLightMana,TollLow,TollCritical};
+        if(values.Any(v=>!double.IsFinite(v)||v<=0||v>1)||Critical>=Major||Major>=HealBelow||GroupCritical>=GroupLow||TollCritical>=TollLow)
             throw new InvalidDataException("治疗阈值必须在0到1之间，且危急<大掉血<治疗线、群体危急线<群体低血线。");
+        if(!double.IsFinite(CooldownReviewSeconds)||CooldownReviewSeconds<.5||CooldownReviewSeconds>10)
+            throw new InvalidDataException("冷却观察时间必须在0.5到10秒之间。");
     }
 }
-internal sealed record GroupInjury(int Alive,int Low,int Critical,int Injured,bool Major,bool Aoe,bool Reliable,int Unknown=0);
+internal sealed record GroupInjury(int Alive,int Low,int Critical,int Injured,bool Major,bool Aoe,bool Reliable,int Unknown=0,
+    bool Toll=false,int Urgent=0);
 internal static class HolyTriage
 {
     internal static string Single(double? hp,HealingThresholds t)=>hp is null?"血量未知":hp<t.Critical?"单体危急":hp<t.Major?"单体大掉血":hp<t.HealBelow?"单体普通掉血":"轻微掉血，无需治疗";
     internal static GroupInjury Analyze(Dictionary<int,Color> frames,bool raid,HealingThresholds t)
     {
-        int alive=0,low=0,critical=0,injured=0,unknown=0;
+        int alive=0,low=0,critical=0,injured=0,unknown=0,tollLow=0,tollCritical=0,urgent=0;
         for(int slot=1;slot<=(raid?40:5);slot++) {
             var hp=frames.TryGetValue(50+slot,out var c)?TeamHealthReading.Read(c):new(TeamHealthStatus.Unknown,null);
             if(hp.Status==TeamHealthStatus.Unknown) {unknown++;continue;}
             if(hp.Percent is not >0) continue;
             alive++;if(hp.Percent<t.GroupLow) low++;if(hp.Percent<t.GroupCritical) critical++;if(hp.Percent<t.HealBelow) injured++;
+            if(hp.Percent<t.TollLow) tollLow++;if(hp.Percent<t.TollCritical) tollCritical++;if(hp.Percent<t.Critical) urgent++;
         }
         bool reliable=alive>0&&(double)alive/(alive+unknown)>=t.MinimumCoverage;
         bool major=reliable&&(low>=(raid?Math.Max(3,(int)Math.Ceiling(alive*t.RaidLowFraction)):3)||critical>=(raid?Math.Max(2,(int)Math.Ceiling(alive*t.RaidCriticalFraction)):2));
-        return new(alive,low,critical,injured,major,reliable&&injured>=(raid?Math.Max(3,(int)Math.Ceiling(alive*.20)):2),reliable,unknown);
+        // The relaxed Toll thresholds apply to parties; raid population scaling is retained.
+        bool toll=reliable&&(raid?major:tollLow>=3||tollCritical>=2);
+        return new(alive,low,critical,injured,major,reliable&&injured>=(raid?Math.Max(3,(int)Math.Ceiling(alive*.20)):2),reliable,unknown,toll,urgent);
     }
 }

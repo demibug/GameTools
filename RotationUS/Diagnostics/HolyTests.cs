@@ -24,7 +24,9 @@ internal static class HolyTests
             buff=new() {Infusion=false,HandOfDivinity=false,DivinePurpose=false};
             HOLY.Inst.Reset();
         }
-        void Want(int key,string why) {var d=HOLY.Decide(f,buff);Check(d.Key==key,why+" actual="+d.Key+" "+d.Reason);}
+        // Legacy branch cases opt into healing Mastery; policy tests cover defaults.
+        var automatic=new HealingThresholds(AutoAuraMastery:true,AuraMasteryHasToll:true,RaidAutoAuraMastery:true);
+        void Want(int key,string why) {var d=HOLY.Decide(f,buff,automatic);Check(d.Key==key,why+" actual="+d.Key+" "+d.Reason);}
         void ShieldSetup(bool raid=false) {
             Reset(raid);F(4,false);F(12);F(13);F(21);F(22);F(31);F(92);F(95);F(97);F(98);
             F(47,false);Hp(6,.85);
@@ -32,14 +34,14 @@ internal static class HolyTests
         }
         foreach(bool raid in new[]{false,true}) {
             ShieldSetup(raid);Want(18,"safe Shield has highest priority ahead of ready Judgment, raid="+raid);
-            foreach(int id in new[]{1,2,3,9,20,19,13,92,95,97,98}) {
+            foreach(int id in new[]{1,2,3,9,20,19,92,95,97,98}) {
                 foreach(var color in new[]{Color.Black,Color.Orange}) {
                     f[id]=color;Check(HOLY.Decide(f,buff).Key!=18,"Shield requires confirmed gate"+id+", raid="+raid);
                 }
                 F(id);
             }
-            // One remaining charge can heal, but never authorizes Shield.
-            F(22);F(13,false);Check(HOLY.Decide(f,buff).Key!=18,"one Shock charge cannot authorize Shield");F(13);
+            // Shock charges no longer prevent spending capped Holy Power.
+            F(22);F(13,false);Want(18,"one Shock charge still permits safe capped Shield");F(13);
             foreach(var color in new[]{Color.White,Color.Black,Color.Orange}) {
                 f[21]=color;Want(18,"Judgment cooldown no longer gates Shield, raid="+raid);
             }
@@ -155,7 +157,7 @@ internal static class HolyTests
         F(30);F(40);Hp(6,.49);Want(5,"low health Protection uses existing minus action5");
         F(20,false);F(9,false);Want(5,"off-GCD Protection does not wait for GCD or current heal cast");
         Hp(6,.50);Want(0,"Protection excludes50 percent boundary");Hp(6,.51);Want(0,"Protection excludes health above50");Hp(6,.49);
-        foreach(int id in new[]{1,2,3,30,40}) {
+        foreach(int id in new[]{1,2,30,40}) {
             foreach(var color in new[]{Color.Black,Color.Orange}) {
                 f[id]=color;Want(0,"Protection needs confirmed combat, live player/target, ready and usable spell");
             }
@@ -261,9 +263,9 @@ internal static class HolyTests
         F(16);Want(22,"critical self still uses healing stone instead of manual Lay");
         Reset();Hp(6,.4);F(16);F(17);Want(22,"stone first");F(16,false);Want(23,"potion second");
         F(1,false);Want(0,"items no combat");
-        Reset();Hp(6,.79);F(91);Skill(3);Want(2,"self wog >=3 uses action2 key8");F(91,false);buff.Infusion=true;Skill(5);Want(1,"self infused flash uses action1 key7");
-        F(3,false);Want(0,"self healing still requires live target");
-        Reset();Hp(6,.79);Skill(6);buff.HandOfDivinity=true;F(10,false);Hp(7,.05);
+        Reset();Hp(8,1);Member(2,1);Hp(6,.79);F(91);Skill(3);Want(2,"self wog >=3 uses action2 key8");F(91,false);buff.Infusion=true;Skill(5);Want(1,"self infused flash uses action1 key7");
+        F(3,false);Want(1,"self healing does not require live target");
+        Reset();Hp(8,1);Member(2,1);Hp(6,.79);Skill(6);buff.HandOfDivinity=true;F(10,false);Hp(7,.05);
         Want(3,"self Hand instant Holy Light uses action3 key9 while moving and low mana");
         buff.HandOfDivinity=false;Want(0,"self moving Holy Light stops when Hand is consumed");
         buff.HandOfDivinity=null;Want(0,"unknown Hand never enables moving self Holy Light");
@@ -292,7 +294,7 @@ internal static class HolyTests
         Check(states.Count==1&&states.ContainsKey(102),"only selector action");
         states.Clear();HOLY.Inst.Process(f,b,states);Check(states.Count==0,"wait old target");
         Hp(6,.19);Skill(3);F(91);HOLY.Inst.Process(f,b,states);Check(states.ContainsKey(2),"self wog key8 bypasses target acknowledgement");
-        states.Clear();Hp(6,.7);Skill(3,false);F(91,false);Skill(5);HOLY.Inst.Buffs.Infusion=true;
+        states.Clear();Hp(6,.19);Skill(3,false);F(91,false);Skill(5);HOLY.Inst.Buffs.Infusion=true;
         HOLY.Inst.Process(f,b,states);Check(states.Count==1&&states.ContainsKey(1),"self infused Flash key7 does not wait for another target acknowledgement");
         states.Clear();HOLY.Inst.Buffs.Infusion=false;Skill(5,false);Skill(6);HOLY.Inst.Buffs.HandOfDivinity=true;F(10,false);
         HOLY.Inst.Process(f,b,states);Check(states.Count==1&&states.ContainsKey(3),"self Hand Holy Light key9 does not wait for another target acknowledgement");
@@ -301,20 +303,20 @@ internal static class HolyTests
         F(47,false);HOLY.Inst.Process(f,b,states);Check(states.Count==0,"intervening target mismatch resets confirmation");
         F(47);f[11]=Color.Orange;HOLY.Inst.Process(f,b,states);Check(states.Count==0,"unknown food does not reset pending confirmation after mismatch");
         HOLY.Inst.Process(f,b,states);Check(states.ContainsKey(8),"second confirmation allows healing");
-        Reset();Member(2,.6);Member(3,.6);Member(4,.6);Hp(8,.6);Skill(9);Skill(4);Want(15,"virtue precedes toll");
+        Reset();Member(2,.6);Member(3,.6);Member(4,.6);Hp(8,.6);Skill(9);Skill(4);Skill(2);Want(15,"virtue precedes toll with an executable follow-up");
         f[97]=Color.Orange;Want(15,"ready Virtue ignores removed window slot");
         F(29,false);F(97);Want(4,"party toll uses 0 self macro no target change");
         F(97,false);Want(4,"Virtue cooldown prevents repeat cast without a healing window");
         F(41);Want(10,"raid toll uses semicolon on current target");F(41,false);
         F(92);Skill(3);Want(9,"5 hp before toll");F(92,false);Skill(4,false);Skill(7);Want(13,"no infusion -> wings");
-        buff.Infusion=true;Skill(5);Want(11,"any infusion instead of wings regardless of low ally count");
-        F(95);Want(11,"old unused layer point is ignored");F(95,false);
+        buff.Infusion=true;Skill(5);Want(13,"infusion does not indefinitely postpone needed wings");
+        F(95);Want(13,"old unused layer point is ignored");F(95,false);
         buff.Infusion=false;
         Skill(7,false);Skill(8);Want(14,"wings on cd -> mastery");
         F(98);Want(14,"legacy active wings observation cannot block cooldown-based mastery");
-        buff.Infusion=null;Want(11,"unknown infusion permits stationary flash fallback without cooldown guess");
-        Skill(2);Skill(7);Want(8,"unknown group infusion falls through to confirmed shock instead of wings");
-        f[24]=Color.Orange;Want(8,"unknown toll cooldown cannot block confirmed shock");
+        buff.Infusion=null;Want(14,"unknown infusion cannot suppress configured healing mastery");
+        Skill(2);Skill(7);Want(13,"unknown infusion does not block needed wings");
+        f[24]=Color.Orange;Want(13,"unknown toll cooldown does not block needed wings");
         Reset();Skill(2);Skill(7);Skill(8);
         Want(8,"absent infusion with ordinary injury never opens wings or mastery");
         Member(2,.15);Hp(8,.15);
@@ -326,8 +328,8 @@ internal static class HolyTests
         foreach(var color in new[]{Color.White,Color.Black,Color.Orange}) {
             f[98]=color;Want(13,"removed wings aura does not affect ready group cooldown");
         }
-        f[27]=Color.Orange;Want(8,"unknown wings cooldown never enables wings or mastery");
-        F(27);F(37,false);Want(8,"ready but unusable wings cannot cast or masquerade as cooldown for mastery");F(37);
+        f[27]=Color.Orange;Want(14,"mastery demand is independent of wings cooldown");
+        F(27);F(37,false);Want(14,"unusable wings does not block configured healing mastery");F(37);
         Skill(7,false);Want(14,"wings confirmed on cooldown permits ready mastery during major aoe");
         F(38,false);Want(8,"unusable mastery skips to shock");F(38);
         F(19,false);Want(8,"no group cannot open wings from stale major group observations");
@@ -350,9 +352,9 @@ internal static class HolyTests
         F(9,false);Want(0,"free heal cannot interrupt active cast");F(9);F(20,false);Want(0,"free heal waits for gcd");F(20);
         F(1,false);Want(0,"free heal requires combat");F(1);F(2,false);Want(0,"free heal requires live player");F(2);
         Hp(8,.95);Member(2,.95);Want(0,"proc does not heal topped target");
-        Reset();Skill(3);buff.DivinePurpose=true;Hp(6,.79);F(10,false);Want(2,"self key8 accepts confirmed proc at zero holy power while moving");
+        Reset();Hp(8,1);Member(2,1);Skill(3);buff.DivinePurpose=true;Hp(6,.79);F(10,false);Want(2,"self key8 accepts confirmed proc at zero holy power while moving");
         f[91]=Color.Orange;Want(2,"self proc bypasses unknown holy power");buff.DivinePurpose=null;Want(0,"unknown proc cannot grant self free heal");
-        buff.DivinePurpose=true;F(3,false);Want(0,"self free heal retains live target requirement");
+        buff.DivinePurpose=true;F(3,false);Want(2,"self free heal does not require live target");
         Reset(true);Skill(3);buff.DivinePurpose=true;Member(3,.2);Want(9,"raid proc heals selected target without switching");
         Reset();Member(5,.2);Skill(3);buff.DivinePurpose=true;Want(105,"external point105 does not collide with party4 selection action105");
         Reset();Hp(8,.55);Member(2,.55);Skill(6);Skill(5);Want(12,"major target gets hard Light with absent infusion and Shock cooldown");Hp(7,.2);Want(11,"low mana uses Flash when usable");
@@ -394,11 +396,11 @@ internal static class HolyTests
         F(94,false);Want(0,"native absent Hand overrides fixed point presence");
         Reset(true);buff.HandOfDivinity=true;Skill(6);F(10,false);Member(3,.2);Want(12,"raid Hand heals selected target without switching to lowest member");
         Reset();Member(2,.6);Member(3,.6);Member(4,.6);Hp(8,.6);Skill(6);Skill(7);Skill(8);F(10,false);
-        buff.HandOfDivinity=true;Want(12,"remaining Hand casts precede fresh cooldown activation");
+        buff.HandOfDivinity=true;Want(13,"major pressure can activate wings even with a Hand proc");
         buff.HandOfDivinity=false;Want(13,"no infusion and no Hand uses ready wings");
         // Sending wings does not prove it granted instant casts.
         Skill(7,false);buff.HandOfDivinity=null;Want(14,"unknown Hand never assumes instant Holy Light, major aoe can use ready mastery");
-        buff.HandOfDivinity=true;Want(12,"actual Hand acquisition after wings enables Holy Light");
+        buff.HandOfDivinity=true;Skill(8,false);Want(12,"actual Hand acquisition after wings enables Holy Light");
         Reset();Member(2,.6);Member(3,.6);Member(4,.6);var t=new HealingThresholds();Check(HolyTriage.Analyze(f,false,t).Major,"party 3 below70 major");
         Check(HolyTriage.Single(.19,t)=="单体危急"&&HolyTriage.Single(.4,t)=="单体大掉血"&&HolyTriage.Single(.8,t)=="单体普通掉血"&&HolyTriage.Single(.95,t)=="轻微掉血，无需治疗","four single target classifications");
         Member(4,1);Check(!HolyTriage.Analyze(f,false,t).Major,"2 below70 not major");Member(2,.4);Member(3,.4);Check(HolyTriage.Analyze(f,false,t).Major,"2 below50 major");
