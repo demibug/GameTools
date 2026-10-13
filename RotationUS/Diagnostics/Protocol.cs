@@ -22,7 +22,9 @@ internal sealed class SpecialPointSetting
     public bool Enabled { get; set; }
     public string Comparison { get; set; } = "presence";
     public SampleColor? ReferenceColor { get; set; }
-    public SpecialPointSetting Copy() => new() { Point = Point with { }, Enabled = Enabled, Comparison = Comparison, ReferenceColor = ReferenceColor };
+    // Opt-in only: legacy Holy reference colors represented presence, not expiry.
+    public bool HandExpiryMode { get; set; }
+    public SpecialPointSetting Copy() => new() { Point = Point with { }, Enabled = Enabled, Comparison = Comparison, ReferenceColor = ReferenceColor, HandExpiryMode=HandExpiryMode };
 }
 
 internal static class DisplayProtocol
@@ -92,6 +94,8 @@ internal sealed class DiagnosticLayout
             if (setting is null || setting.Point is null || setting.Comparison is not ("presence" or "expiring")) throw new InvalidDataException("特殊点判断类型不正确。");
             if (setting.Comparison=="expiring" && setting.ReferenceColor == new SampleColor(0, 0, 0)) throw new InvalidDataException("临近结束参考色必须非黑。");
             if (setting.Enabled && setting.Comparison == "expiring" && setting.ReferenceColor is null) throw new InvalidDataException("请先采集临近结束参考色。");
+            if(setting.Enabled&&setting.HandExpiryMode&&(setting.ReferenceColor is null||setting.ReferenceColor==new SampleColor(0,0,0)))
+                throw new InvalidDataException("神性之手临期模式需要非黑参考色。");
         }
         foreach (var p in Frames.Concat(Bars).Concat(Markers).Concat(SpecialEnabled ? new[] { Special } : Array.Empty<SamplePoint>()).Concat(SpecialPoints.Values.Where(s => s.Enabled).Select(s => s.Point)))
             if (p is null || p.X < 0 || p.Y < 0 || p.X >= ClientWidth || p.Y >= ClientHeight)

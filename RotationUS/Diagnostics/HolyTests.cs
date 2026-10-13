@@ -26,7 +26,7 @@ internal static class HolyTests
         }
         // Legacy branch cases opt into healing Mastery; policy tests cover defaults.
         var automatic=new HealingThresholds(AutoAuraMastery:true,AuraMasteryHasToll:true,RaidAutoAuraMastery:true);
-        void Want(int key,string why) {var d=HOLY.Decide(f,buff,automatic);Check(d.Key==key,why+" actual="+d.Key+" "+d.Reason);}
+        void Want(int key,string why,HolyCooldownContext? context=null) {var d=HOLY.Decide(f,buff,automatic,context);Check(d.Key==key,why+" actual="+d.Key+" "+d.Reason);}
         void ShieldSetup(bool raid=false) {
             Reset(raid);F(4,false);F(12);F(13);F(21);F(22);F(31);F(92);F(95);F(97);F(98);
             F(47,false);Hp(6,.85);
@@ -81,11 +81,13 @@ internal static class HolyTests
         foreach(bool self in new[]{false,true})
         foreach(int charges in new[]{0,1,2})
         foreach(bool infusion in new[]{false,true})
-        foreach(bool hand in new[]{false,true}) {
+        foreach(bool hand in new[]{false,true})
+        foreach(double hp in new[]{.55,.70}) {
             Reset(raid);Skill(2);F(22,charges>0);F(13,charges>=2);Skill(5);Skill(6);
             buff.Infusion=infusion;buff.HandOfDivinity=hand;
-            if(self) {Hp(6,.70);Member(1,.70);F(46);F(47,false);}
-            int expected=charges==2?8:infusion?(self?1:11):hand?(self?3:12):charges==1?8:self?1:11;
+            Hp(8,hp);Member(2,hp);
+            if(self) {Hp(6,hp);Member(1,hp);F(46);F(47,false);}
+            int expected=charges==2?8:infusion?(self?1:11):hand&&hp<.60?(self?3:12):charges==1?8:hp<.60?(self?3:12):self?1:11;
             Want(expected,$"Shock priority raid={raid}, self={self}, charges={charges}, infusion={infusion}, hand={hand}");
         }
         Reset();Hp(6,.70);Member(1,.70);F(4,false);F(12);F(47,false);Skill(2);Skill(5);
@@ -112,6 +114,7 @@ internal static class HolyTests
                     buff.Infusion=true;F(10,false);
                     Want(1,$"unconfirmed full-Shock route must retain instant self Infusion, point={id}");
                     buff.Infusion=false;Skill(6);buff.HandOfDivinity=true;
+                    Hp(6,.55);Member(1,.55);
                     Want(3,$"unconfirmed full-Shock route must retain instant self Hand, point={id}");
                 }
             }
@@ -180,7 +183,7 @@ internal static class HolyTests
             if(mode==5) buff.DivinePurpose=true;
             if(mode==3) {Skill(6);buff.HandOfDivinity=true;}
             int key=mode switch {1 or 4=>1,2 or 5=>2,3=>3,_=>0};
-            Want(hp<.85?key:0,$"self85 boundary mode={mode}, raid={raid}, hp={hp}");
+            Want(hp<.85&&mode!=3?key:0,$"self85 boundary mode={mode}, raid={raid}, hp={hp}");
             Check(HOLY.Decide(f,buff,new(HealBelow:.80)).Key==0,$"self respects configured80 line mode={mode}, raid={raid}, hp={hp}");
         }
         // Check every ordinary target-healing branch at the new line in both
@@ -191,7 +194,7 @@ internal static class HolyTests
             Reset(raid);Hp(8,hp);Member(2,hp);Skill(spell);
             if(spell==3) F(91);
             if(spell==6) buff.HandOfDivinity=true;
-            int expected=hp>=.85?0:spell switch{2=>8,3=>9,5=>11,6=>12,_=>0};
+            int expected=hp>=.85?0:spell switch{2=>8,3=>9,5=>11,6=>0,_=>0};
             Want(expected,$"85 percent boundary for spell{spell}, raid={raid}, hp={hp}");
         }
         foreach(bool raid in new[]{false,true}) {
@@ -200,7 +203,8 @@ internal static class HolyTests
             Skill(2,false);Skill(5);Want(11,"single injury with Shock on cooldown falls through ready Toll to Flash");
             Hp(8,.80);Member(2,.80);Member(3,.80);Skill(2);Want(8,"ordinary two-person aoe below85 does not spend Toll");
             Hp(8,.60);Member(2,.60);Member(3,.60);Member(4,.60);
-            Want(raid?10:4,"three below70 spends group Toll using the mode-specific key");
+            Check(HOLY.Decide(f,buff,automatic,new(Healing:new(new PartyTollReading(true),TollConfirmed:true))).Key==(raid?10:4),
+                "confirmed party group injury or raid threshold spends mode-specific Toll");
             Member(4,1);Want(8,"two below70 do not meet major group threshold");
             Hp(8,.40);Member(2,.40);Member(3,.40);Want(raid?10:4,"two below50 permit group Toll");
             F(19,false);Want(8,"stale major group health without a group cannot spend Toll");F(19);
@@ -227,7 +231,7 @@ internal static class HolyTests
         // Native confirmed absence must override a stale external presence point.
         foreach(bool self in new[]{false,true})
         foreach(bool? native in new bool?[]{false,true,null}) {
-            Reset();Skill(5);Skill(6);Hp(8,.84);Member(2,.84);
+            Reset();Skill(5);Skill(6);Hp(8,.55);Member(2,.55);
             buff.Infusion=null; // unknown infusion cannot authorize hard-cast Light
             if(self) Hp(6,.55);
             buff.HandOfDivinity=true;
@@ -265,7 +269,7 @@ internal static class HolyTests
         F(1,false);Want(0,"items no combat");
         Reset();Hp(8,1);Member(2,1);Hp(6,.79);F(91);Skill(3);Want(2,"self wog >=3 uses action2 key8");F(91,false);buff.Infusion=true;Skill(5);Want(1,"self infused flash uses action1 key7");
         F(3,false);Want(1,"self healing does not require live target");
-        Reset();Hp(8,1);Member(2,1);Hp(6,.79);Skill(6);buff.HandOfDivinity=true;F(10,false);Hp(7,.05);
+        Reset();Hp(8,1);Member(2,1);Hp(6,.55);Skill(6);buff.HandOfDivinity=true;F(10,false);Hp(7,.05);
         Want(3,"self Hand instant Holy Light uses action3 key9 while moving and low mana");
         buff.HandOfDivinity=false;Want(0,"self moving Holy Light stops when Hand is consumed");
         buff.HandOfDivinity=null;Want(0,"unknown Hand never enables moving self Holy Light");
@@ -305,8 +309,9 @@ internal static class HolyTests
         HOLY.Inst.Process(f,b,states);Check(states.ContainsKey(8),"second confirmation allows healing");
         Reset();Member(2,.6);Member(3,.6);Member(4,.6);Hp(8,.6);Skill(9);Skill(4);Skill(2);Want(15,"virtue precedes toll with an executable follow-up");
         f[97]=Color.Orange;Want(15,"ready Virtue ignores removed window slot");
-        F(29,false);F(97);Want(4,"party toll uses 0 self macro no target change");
-        F(97,false);Want(4,"Virtue cooldown prevents repeat cast without a healing window");
+        var confirmedGroup=new HolyCooldownContext(Healing:new(new PartyTollReading(true),TollConfirmed:true));
+        F(29,false);F(97);Want(4,"party toll uses 0 self macro no target change",confirmedGroup);
+        F(97,false);Want(4,"Virtue cooldown prevents repeat cast without a healing window",confirmedGroup);
         F(41);Want(10,"raid toll uses semicolon on current target");F(41,false);
         F(92);Skill(3);Want(9,"5 hp before toll");F(92,false);Skill(4,false);Skill(7);Want(13,"no infusion -> wings");
         buff.Infusion=true;Skill(5);Want(13,"infusion does not indefinitely postpone needed wings");
@@ -381,7 +386,7 @@ internal static class HolyTests
         Reset(true);Skill(5);Skill(2);F(22,false);Want(11,"raid selected injured target receives ordinary Flash with Shock on cooldown");
         F(9,false);Want(0,"fallback never interrupts current cast");F(9);F(20,false);Want(0,"fallback waits for actual GCD");
         f[20]=Color.Orange;Want(0,"unknown GCD cannot enable fallback cast");
-        Reset();Skill(6);Skill(2);F(10,false);Hp(7,.05);buff.HandOfDivinity=true;
+        Reset();Hp(8,.55);Member(2,.55);Skill(6);Skill(2);F(10,false);Hp(7,.05);buff.HandOfDivinity=true;
         Want(12,"confirmed Hand buff uses instant Holy Light while moving and below ordinary mana floor");
         Want(12,"Hand buff still present after first instant cast permits second");
         buff.HandOfDivinity=false;Want(8,"Hand buff consumed stops instant Holy Light after second cast");
@@ -390,17 +395,17 @@ internal static class HolyTests
         buff.HandOfDivinity=true;Skill(6,false);Want(0,"unlearned or unusable Holy Light skipped even with Hand buff");
         Skill(6);F(9,false);Want(0,"Hand waits for current cast");F(9);F(20,false);Want(0,"Hand waits for gcd");F(20);
         F(5,false);Want(0,"Hand needs healing range");F(5);F(4,false);Want(0,"Hand needs friendly target");F(4);
-        Hp(8,.95);Member(2,.95);Want(0,"Hand does not overheal topped target");Hp(8,.7);Member(2,.7);
+        Hp(8,.95);Member(2,.95);Want(0,"Hand does not overheal topped target");Hp(8,.55);Member(2,.55);
         buff.Infusion=true;Skill(5);Want(11,"existing infusion consumed before Hand instant Holy Light");
         F(93,false);Want(12,"native absent infusion and actual Hand buff choose Holy Light");
         F(94,false);Want(0,"native absent Hand overrides fixed point presence");
-        Reset(true);buff.HandOfDivinity=true;Skill(6);F(10,false);Member(3,.2);Want(12,"raid Hand heals selected target without switching to lowest member");
+        Reset(true);Hp(8,.55);Member(2,.55);buff.HandOfDivinity=true;Skill(6);F(10,false);Member(3,.2);Want(12,"raid Hand heals selected target without switching to lowest member");
         Reset();Member(2,.6);Member(3,.6);Member(4,.6);Hp(8,.6);Skill(6);Skill(7);Skill(8);F(10,false);
         buff.HandOfDivinity=true;Want(13,"major pressure can activate wings even with a Hand proc");
         buff.HandOfDivinity=false;Want(13,"no infusion and no Hand uses ready wings");
         // Sending wings does not prove it granted instant casts.
         Skill(7,false);buff.HandOfDivinity=null;Want(14,"unknown Hand never assumes instant Holy Light, major aoe can use ready mastery");
-        buff.HandOfDivinity=true;Skill(8,false);Want(12,"actual Hand acquisition after wings enables Holy Light");
+        buff.HandOfDivinity=true;Skill(8,false);Hp(8,.55);Member(2,.55);Want(12,"actual Hand acquisition and major injury after wings enable Holy Light");
         Reset();Member(2,.6);Member(3,.6);Member(4,.6);var t=new HealingThresholds();Check(HolyTriage.Analyze(f,false,t).Major,"party 3 below70 major");
         Check(HolyTriage.Single(.19,t)=="单体危急"&&HolyTriage.Single(.4,t)=="单体大掉血"&&HolyTriage.Single(.8,t)=="单体普通掉血"&&HolyTriage.Single(.95,t)=="轻微掉血，无需治疗","four single target classifications");
         Member(4,1);Check(!HolyTriage.Analyze(f,false,t).Major,"2 below70 not major");Member(2,.4);Member(3,.4);Check(HolyTriage.Analyze(f,false,t).Major,"2 below50 major");

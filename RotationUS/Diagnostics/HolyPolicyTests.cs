@@ -96,11 +96,13 @@ internal static class HolyPolicyTests
             frames[29]=virtue is null?Color.Orange:virtue==true?Color.White:Color.Black;
             Want(4,"multiple critical allies permit emergency Toll overflow regardless of Virtue");
         }
-        Reset();Group(.75);Skill(4);Want(4,"three below80 enable useful party Toll");
-        Member(4,1);Want(0,"two below80 alone do not enable party Toll");
+        var confirmedToll=new HolyCooldownContext(Healing:new(new PartyTollReading(true),TollConfirmed:true));
+        Reset();Group(.75);Skill(4);Want(0,"ordinary group injury needs consecutive evidence");
+        Want(4,"confirmed ordinary group damage enables Toll",confirmedToll);
+        Member(4,1);Want(4,"confirmed two below80 with sufficient deficit enable party Toll",confirmedToll);
         Hp(8,.55);Member(2,.55);Member(3,.55);Want(4,"two below60 enable party Toll");
         frames[54]=frames[55]=Color.Orange;Want(0,"unreliable group data cannot authorize Toll");
-        Reset();Group(.75);Skill(4);settings=settings with{TollLow=.7};Want(0,"Toll threshold is configurable");
+        Reset();Group(.75);Skill(4);settings=settings with{HealBelow=.7};Want(0,"ordinary Toll uses configured healing line",confirmedToll);
         Reset(true);Group(.75);Skill(4);Want(0,"relaxed party threshold not applied to forty-person raid");
         Reset(true);Hp(8,.1);Member(2,.1);Member(3,.1);Skill(4);F(91);F(92);
         Want(10,"two imminent deaths in a large raid may bypass population and overflow gates");
@@ -220,7 +222,8 @@ internal static class HolyPolicyTests
         foreach(int spell in new[]{2,5,6}) {
             Reset(raid);F(91);F(92);Skill(3,false);Skill(spell);F(10,false);
             buff.Infusion=spell==5;buff.HandOfDivinity=spell==6;
-            if(self) {Hp(6,.7);Member(1,.7);F(46);F(47,false);}
+            double hp=spell==6?.55:.7;Hp(8,hp);Member(2,hp);
+            if(self) {Hp(6,hp);Member(1,hp);F(46);F(47,false);}
             int expected=spell==2?8:spell==5?(self?1:11):(self?3:12);
             Want(expected,"cap never blocks confirmed instant healing with unavailable spender");
             Check(Tick(0)==expected,"actual execution retains capped instant healing with unavailable spender");

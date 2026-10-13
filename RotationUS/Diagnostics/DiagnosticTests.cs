@@ -404,8 +404,13 @@ internal static class DiagnosticTests
         count += ArmsTests.Run();
         count += HolyTests.Run();
         count += HolyPolicyTests.Run();
+        count += HolyPriorityTests.Run();
+        count += HolyHealingWindowTests.Run();
         count += HolyShieldLog.RunTests();
         count += ExpandedProtocolTests.Run();
+        count += PartyRosterTests.Run();
+        count += PartyRunicPowerTests.Run();
+        count += PartyDiagnosticLogTests.Run();
         Console.WriteLine($"PASS: {count} diagnostic checks. Synthetic pixels only; no input sent.");
     }
     public static void Render(string path, bool position = false)
@@ -434,7 +439,7 @@ internal static class DiagnosticTests
         form.Show(); Application.DoEvents(); form.FreezeForTesting();
         if (position) form.ShowSyntheticPosition(layout, pattern); else form.ShowSynthetic(layout, image);
         form.Refresh(); Application.DoEvents();
-        var displayGrid = Descendants(form).OfType<DataGridView>().Single();
+        var displayGrid = Descendants(form).OfType<DataGridView>().Single(g=>g.Name=="pointGrid");
         if (!position)
         {
             form.ProfilePresentation(layout, image);

@@ -13,6 +13,7 @@ internal sealed class HolyPointSettings : UserControl
         internal readonly NumericUpDown X = new() { Maximum=16000, Dock=DockStyle.Fill };
         internal readonly NumericUpDown Y = new() { Maximum=16000, Dock=DockStyle.Fill };
         internal readonly Label Color = new() { Dock=DockStyle.Fill, TextAlign=ContentAlignment.MiddleLeft };
+        internal readonly Label Rule = new() { Dock=DockStyle.Fill, TextAlign=ContentAlignment.MiddleLeft };
         internal readonly Button Pick = new() { Text="取点 / 取色", Dock=DockStyle.Fill };
         internal readonly Button Save = new() { Text="保存", Dock=DockStyle.Fill, Enabled=false };
         internal readonly Button Disable = new() { Text="停用", Dock=DockStyle.Fill, Enabled=false };
@@ -39,7 +40,7 @@ internal sealed class HolyPointSettings : UserControl
             var definition=HolyBuffs.Points[i]; string key=definition.Key;
             var row=new PointRow(); Rows.Add(key,row);
             Control[] controls={row.Name,row.X,row.Y,row.Color,
-                new Label {Text=HolyBuffs.Rule(key),Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft},
+                row.Rule,
                 row.Pick,row.Save,row.Disable};
             for(int c=0;c<controls.Length;c++) table.Controls.Add(controls[c],c,i+1);
             row.X.ValueChanged+=(_,_)=> { if(!updating) InvalidatePick(key); };
@@ -66,6 +67,7 @@ internal sealed class HolyPointSettings : UserControl
                 row.X.Value=Math.Min(row.X.Maximum,setting?.Point.X??530);
                 row.Y.Value=Math.Min(row.Y.Maximum,setting?.Point.Y??8);
                 row.Color.Text=setting?.ReferenceColor?.ToString()??"未取色";
+                row.Rule.Text=HolyBuffs.Rule(definition.Key,setting?.HandExpiryMode==true);
                 row.Pick.Enabled=layout is not null;row.Disable.Enabled=setting?.Enabled==true;
             }
         }
@@ -89,7 +91,8 @@ internal sealed class HolyPointSettings : UserControl
         if(Rows[key].Pending is not { } picked) throw new InvalidOperationException("请先为该 Buff 取点 / 取色。");
         var updated=layout.Copy();
         updated.SpecialPoints[key]=new() { Point=picked.Point,Enabled=true,
-            Comparison=HolyBuffs.UsesColor(key)?"expiring":"presence",ReferenceColor=picked.Color };
+            Comparison=HolyBuffs.UsesColor(key)?"expiring":"presence",ReferenceColor=picked.Color,
+            HandExpiryMode=layout.SpecialPoints.GetValueOrDefault(key)?.HandExpiryMode==true };
         updated.Validate();return updated;
     }
 }

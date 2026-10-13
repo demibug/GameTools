@@ -19,6 +19,13 @@ internal sealed class DiagnosticForm : Form
     private readonly System.Windows.Forms.Timer timer = new() { Interval = 100 };
     private readonly Stopwatch clock = Stopwatch.StartNew();
     private readonly Heartbeat heartbeat = new();
+    private readonly PartyRosterCache partyRoster = new();
+    private readonly PartyRunicPowerCache partyPower = new();
+    private readonly PartyRosterPanel partyPanel = new();
+    private readonly PartyDiagnosticLog partyDiagnostics = new();
+    private readonly HolyHealingDiagnosticLog healingDiagnostics = new();
+    private readonly Dictionary<int,Color> healingFrames = new();
+    private readonly StateChangeLog logStates = new();
     private readonly CaptureBuffer captureBuffer = new();
     private readonly PresentationSchedule presentation = new();
     private DiagnosticLayout? samplingLayout;
@@ -109,14 +116,21 @@ internal sealed class DiagnosticForm : Form
         var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1920, 1080);
         Location = new Point(Math.Max(area.Left, area.Left + (area.Width - Width) / 2), area.Top + 170);
         TopMost = true;
-        var content = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6, Padding = new Padding(10) };
+        var content = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(10) };
         content.RowStyles.Add(new(SizeType.Absolute, 128));
         content.RowStyles.Add(new(SizeType.Absolute, 52));
-        content.RowStyles.Add(settingsHeight);
-        content.RowStyles.Add(previewHeight);
         content.RowStyles.Add(new(SizeType.Percent, 100));
         content.RowStyles.Add(logsHeight);
         Controls.Add(content);
+        var tabs=new TabControl {Dock=DockStyle.Fill,Name="diagnosticTabs"};
+        var details=new TabPage("点位与设置");
+        var partyPage=new TabPage("小队资料") {Name="partyRosterPage"};
+        partyPage.Controls.Add(partyPanel);
+        tabs.TabPages.Add(details);tabs.TabPages.Add(partyPage);
+        var detailContent=new TableLayoutPanel {Dock=DockStyle.Fill,ColumnCount=1,RowCount=3};
+        detailContent.RowStyles.Add(settingsHeight);detailContent.RowStyles.Add(previewHeight);
+        detailContent.RowStyles.Add(new(SizeType.Percent,100));
+        details.Controls.Add(detailContent);content.Controls.Add(tabs,0,2);
         var toolbar = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = true };
         loopStatus.Click += (_, _) => CollapseToFloating(); toolbar.Controls.Add(loopStatus);
         toolbar.Controls.Add(games);
@@ -210,20 +224,21 @@ internal sealed class DiagnosticForm : Form
         furySettings.Controls.Add(furyOptions,0,1);
         var settingsHost=new Panel {Dock=DockStyle.Fill};
         settingsHost.Controls.Add(settings);settingsHost.Controls.Add(furySettings);settingsHost.Controls.Add(armsSettings);settingsHost.Controls.Add(holySettings);
-        content.Controls.Add(settingsHost, 0, 2);
+        detailContent.Controls.Add(settingsHost, 0, 0);
         var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.FromArgb(245, 247, 250) };
-        scroll.Controls.Add(preview); content.Controls.Add(scroll, 0, 3);
+        scroll.Controls.Add(preview); detailContent.Controls.Add(scroll, 0, 1);
         string[] headings = { "点位", "职业字段", "客户区坐标", "颜色", "原始 RGB", "解码 / 旧规则判断", "最近变化" };
+        grid.Name="pointGrid";
         foreach (var title in headings) grid.Columns.Add(title, title);
         grid.Columns[0].FillWeight = 35; grid.Columns[1].FillWeight = 150; grid.Columns[2].FillWeight = 80;
         grid.Columns[3].FillWeight = 35; grid.Columns[4].FillWeight = 90; grid.Columns[5].FillWeight = 220; grid.Columns[6].FillWeight = 85;
         grid.RowTemplate.Height = 25;
         RestoreLiveRows();
         grid.CurrentCellChanged += (_, _) => { preview.Selected = grid.CurrentRow?.Index ?? -1; preview.Invalidate(); };
-        content.Controls.Add(grid, 0, 4);
+        detailContent.Controls.Add(grid, 0, 2);
         var bottom = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
         bottom.RowStyles.Add(new(SizeType.Absolute, 38)); bottom.RowStyles.Add(new(SizeType.Percent, 100));
-        bottom.Controls.Add(status, 0, 0); bottom.Controls.Add(changes, 0, 1); content.Controls.Add(bottom, 0, 5);
+        bottom.Controls.Add(status, 0, 0); bottom.Controls.Add(changes, 0, 1); content.Controls.Add(bottom, 0, 3);
         games.SelectedIndexChanged += (_, _) => { InvalidateSpecialPick(); StopExecution(); identity = default; activeProfile = null; fields = ClassProfiles.RawFields; classStatus.Text = "当前职业：等待插件识别"; if (!locating) RestoreLiveRows(); ApplyControls(); heartbeat.Reset(); locator.Reset(); locationVerified = false; lastValues.Clear(); SetUnknown("游戏窗口已切换，等待有效采样"); };
         timer.Tick += (_, _) => TickCapture();
         Shown += (_, _) =>
@@ -384,6 +399,7 @@ internal sealed class DiagnosticForm : Form
     private bool SelectClass(ClassIdentity next, DiagnosticLayout geometry, bool force = false)
     {
         if (!force && identity == next) return false;
+        ResetPartyRoster();
         StopExecution(); InvalidateSpecialPick(); heartbeat.Reset();
         var profile = ClassProfiles.Find(next.SpecId);
         if (profile?.ClassId != next.ClassId) profile = null;
@@ -590,7 +606,7 @@ internal sealed class DiagnosticForm : Form
             if (ClassProfiles.Identify(screenshot.At(layout.Markers[1])) != identity)
                 throw new InvalidOperationException("职业 / 专精已变化，请等待识别后重新取点。");
             using var picker = new SpecialPointPicker(screenshot.Image, bounds, activeProfile.DisplayName,
-                furyKey is not null && activeProfile.SpecId == 65 ? $"{HolyBuffs.Label(furyKey)}：{HolyBuffs.Rule(furyKey)}；选择稳定的状态指示区域，避开图标边缘" : furyKey is not null && activeProfile.SpecId == 71 ? $"{ArmsBuffs.Label(furyKey)}：{ArmsBuffs.Rule(furyKey)}；请采集指定状态的参考色" : furyKey is not null ? $"{FuryBuffs.Label(furyKey)}："+(FuryBuffs.UsesTimeColor(furyKey)?"请在临近结束时取非黑参考色；纯黑=缺失":"纯黑=缺失；任何非黑=存在；所取颜色仅记录") : activeProfile.SpecId == 73 ? "纯黑或等于取色 RGB 时，判定需要施放" : "沿用原复仇代码的非黑像素判断");
+                furyKey is not null && activeProfile.SpecId == 65 ? $"{HolyBuffs.Label(furyKey)}：{HolyBuffs.Rule(furyKey,layout.SpecialPoints.GetValueOrDefault(furyKey)?.HandExpiryMode==true)}；选择稳定的状态指示区域，避开图标边缘" : furyKey is not null && activeProfile.SpecId == 71 ? $"{ArmsBuffs.Label(furyKey)}：{ArmsBuffs.Rule(furyKey)}；请采集指定状态的参考色" : furyKey is not null ? $"{FuryBuffs.Label(furyKey)}："+(FuryBuffs.UsesTimeColor(furyKey)?"请在临近结束时取非黑参考色；纯黑=缺失":"纯黑=缺失；任何非黑=存在；所取颜色仅记录") : activeProfile.SpecId == 73 ? "纯黑或等于取色 RGB 时，判定需要施放" : "沿用原复仇代码的非黑像素判断");
             if (picker.ShowDialog() != DialogResult.OK || picker.Selection is not { } selected) return;
             if (GameCapture.ClientSize(game) != size)
                 throw new InvalidOperationException("选点过程中游戏尺寸变化，请重新选取。");
@@ -610,7 +626,7 @@ internal sealed class DiagnosticForm : Form
     {
         StopExecution();
         frozen = !frozen; pause.Text = frozen ? "继续采样" : "暂停查看";
-        if (frozen) SetStatus($"已暂停查看 · 最后采样 {capturedAt:HH:mm:ss.fff}");
+        if (frozen) { ResetPartyRoster("已暂停采样：小队资料和实时能量已清除"); SetStatus($"已暂停查看 · 最后采样 {capturedAt:HH:mm:ss.fff}"); }
         else { heartbeat.Reset(); TickCapture(); }
     }
     private void ToggleExecution()
@@ -665,28 +681,49 @@ internal sealed class DiagnosticForm : Form
             if (SelectClass(nextIdentity, layout)) return;
             bool alive = heartbeat.Observe(next.At(layout.Markers[2]), clock.Elapsed.TotalSeconds);
             bool live = mode == 2 && activeProfile is not null && alive;
+            // Receive metadata even with execution disabled. Never acquire it from combat frames.
+            bool? PartyFlag(int id) => FuryBuffs.Boolean(next.At(layout.Frames[id-1]));
+            int rosterGeneration = partyRoster.Generation;
+            var roster = partyRoster.Observe(id => next.At(layout.Bars[id-1]), live && activeProfile?.SpecId == 65,
+                PartyFlag(19), PartyFlag(41), PartyFlag(1), clock.Elapsed.TotalSeconds);
+            if (partyRoster.Generation != rosterGeneration) HOLY.Inst.Reset();
+            HOLY.Inst.SetPartyRoster(roster);
+            var power=partyPower.Observe(id=>next.At(layout.Bars[id-1]),roster,clock.Elapsed.TotalSeconds);
+            HOLY.Inst.SetRunicPower(power);
+            if(activeProfile?.SpecId==65) {
+                for(int i=0;i<layout.Frames.Length;i++) healingFrames[i+1]=next.At(layout.Frames[i]);
+                HOLY.Inst.ObserveHealing(healingFrames,layout.HolyThresholds,clock.Elapsed.TotalSeconds,live);
+                if(!live) healingFrames.Clear();
+            }
             string reason = mode == 4 ? "定位图案" : activeProfile is null ? identity.DisplayName : mode != 2 ? "插件尚未输出 / 需重载 / 坐标不匹配" : !alive ? "心跳等待或超过 1.5 秒未变化" : "";
             // Execute from the fresh sample before any table, log or preview work.
             string executionText = activeProfile is null ? "执行已关闭" : execution.Tick(game, layout, next, live, clock.Elapsed.TotalSeconds, activeProfile);
             if(activeProfile?.SpecId==65) {
+                RecordPartyDiagnostics(roster,power,id=>next.At(layout.Frames[id-1]),PartyFlag(1),partyRoster.Status,partyPower.Status);
+                RecordHealingDiagnostics(live?HolyBuffs.Read(layout,next.At):new());
                 holyShieldLog.Record(next,layout,live,execution.Enabled,executionText,clock.Elapsed.TotalSeconds);
                 if(holyShieldLog.Started&&!shieldLogAnnounced) {
-                    shieldLogAnnounced=true;AddLog("盾击自动诊断日志："+holyShieldLog.Path);
+                    shieldLogAnnounced=true;AddLog("神圣自动诊断日志（含小队／血DK）："+holyShieldLog.Path,"trace-path");
                 }
                 if(holyShieldLog.Error is {} error&&error!=shieldLogError) {
-                    shieldLogError=error;AddLog("盾击诊断日志写入失败："+error);
+                    shieldLogError=error;AddLog("神圣诊断日志写入失败："+error,"trace-error");
+                }
+                else if(holyShieldLog.Error is null && shieldLogError is not null) {
+                    shieldLogError=null;AddLog("神圣诊断日志写入已恢复","trace-error");
                 }
             }
             // Record changed execution judgments even while the table is hidden.
             // This reports requests/waits, not successful spell casts.
             if (execution.Enabled && activeProfile?.SpecId == 65 && executionText != lastHolyExecutionReason) {
                 lastHolyExecutionReason = executionText;
-                AddLog("神圣执行判断：" + executionText);
+                AddLog("神圣执行判断：" + executionText,"holy-execution");
             }
             if (!presentation.Due(clock.Elapsed.TotalSeconds, Visible && !inFloatingMode && WindowState != FormWindowState.Minimized)) return;
             // The preview/export owns a stable copy; it never triggers another screen capture.
             ReplaceCapture(new Captured((Bitmap)next.Image.Clone(), next.Bounds));
             UpdateLiveRows(next, live, reason);
+            partyPanel.Present(roster,power,slot=>next.At(layout.Frames[49+slot]),PartyFlag(1)==true,
+                activeProfile?.SpecId==65?partyRoster.Status:"小队资料适用于神圣骑士治疗模式",partyPower.Status,layout.HolyThresholds);
             if (live && activeProfile?.SpecId == 72)
             {
                 var f = Enumerable.Range(1, DisplayProtocol.CellCount).ToDictionary(i => i, i => next.At(layout.Frames[i-1]));
@@ -708,12 +745,14 @@ internal sealed class DiagnosticForm : Form
                 var target=next.At(layout.Frames[7]);double? targetHp=target.R==target.G&&target.G==target.B?target.R/255.0:null;
                 bool raid=FuryBuffs.Boolean(next.At(layout.Frames[40]))==true;
                 var injury=HolyTriage.Analyze(f,raid,layout.HolyThresholds);
-                executionStatus.Text="诊断（执行关闭）："+(injury.Major?"群体大掉血 · ":"")+HolyTriage.Single(targetHp,layout.HolyThresholds)+" · "+HOLY.Decide(f,HolyBuffs.Read(layout,next.At),layout.HolyThresholds).Reason;
+                executionStatus.Text="诊断（执行关闭）："+(injury.Major?"群体大掉血 · ":"")+HolyTriage.Single(targetHp,layout.HolyThresholds)+" · "+HOLY.Decide(f,HolyBuffs.Read(layout,next.At),layout.HolyThresholds,new(Healing:HOLY.Inst.HealingSample),party:roster,power:power).Reason;
             }
             int charges = next.At(layout.Bars[1]).R == 255 ? 2 : next.At(layout.Bars[0]).R == 255 ? 1 : 0;
             string extra = activeProfile?.SpecId == 73 ? $" · 盾牌格挡充能 {charges}" : "";
             SetStatus(live ? $"{identity.DisplayName} · 心跳正常{extra} · {size.Width}×{size.Height} · {capturedAt:HH:mm:ss.fff}" : $"{reason} · 原始画面 {capturedAt:HH:mm:ss.fff}", false);
             if (execution.Enabled || activeProfile?.SpecId is not (65 or 71 or 72) || !live) executionStatus.Text = executionText;
+            if(live&&activeProfile?.SpecId==65&&HOLY.Inst.HealingSample.VirtueActive)
+                executionStatus.Text+=$" · 美德推定窗口 {HOLY.Inst.HealingSample.VirtueRemaining:F1}秒";
         }
         catch (Exception e)
         {
@@ -739,6 +778,8 @@ internal sealed class DiagnosticForm : Form
                 if (!Equals(row.Cells[2].Value, coordinates)) row.Cells[2].Value = coordinates;
                 string signature = $"{rgb}|{value}";
                 bool hadValue = lastValues.TryGetValue(field.Id, out var old);
+                string logKey=$"field:{layout.SpecId}:{field.Id}";
+                if(!hadValue) logStates.Changed(logKey,value);
                 if (hadValue && old == signature) continue;
                 row.Cells[3].Style.BackColor = color; row.Cells[4].Value = rgb; row.Cells[5].Value = value;
                 row.DefaultCellStyle.BackColor = live && field.Kind == ValueKind.Boolean && color.R == 255 ? Color.FromArgb(232, 246, 239) : Color.White;
@@ -746,7 +787,8 @@ internal sealed class DiagnosticForm : Form
                 {
                     changedTimes[field.Id] = DateTime.Now.ToString("HH:mm:ss.fff");
                     // Undefined slots still show their current RGB; log meaningful fields only.
-                    if (field.Kind != ValueKind.Raw || FuryBuffs.SpecialKey(layout, field) is not null) AddLog($"[{field.Id}] {field.Name}: {old} → {signature}");
+                    if (field.Kind != ValueKind.Raw || FuryBuffs.SpecialKey(layout, field) is not null)
+                        AddLog($"[{field.Id}] {field.Name}: {old} → {signature}",logKey,value);
                 }
                 lastValues[field.Id] = signature;
                 row.Cells[6].Value = changedTimes.GetValueOrDefault(field.Id, "—");
@@ -789,6 +831,7 @@ internal sealed class DiagnosticForm : Form
     }
     private void SetUnknown(string reason)
     {
+        ResetPartyRoster(reason);
         executionStatus.Text = execution.Enabled ? "执行等待有效采样" : "执行已关闭";
         if (inFloatingMode) { SetStatus(reason); return; }
         if (lastUnknownReason == reason) return;
@@ -800,14 +843,43 @@ internal sealed class DiagnosticForm : Form
         }
         lastValues.Clear(); SetStatus(captured is null ? reason : reason + $" · 保留上次画面 {capturedAt:HH:mm:ss.fff}");
     }
+    private void ResetPartyRoster(string reason="资料已清除，等待脱战刷新")
+    {
+        partyRoster.Reset(reason);
+        partyPower.Reset();partyPanel.Clear(reason);
+        HOLY.Inst.SetPartyRoster(null);
+        HOLY.Inst.Reset();
+        healingFrames.Clear();
+        if(activeProfile?.SpecId==65||healingDiagnostics.Observed) RecordHealingDiagnostics(new());
+        if(partyDiagnostics.Observed) RecordPartyDiagnostics(null,null,_=>Color.Black,null,reason,"资料已清除：取消血DK降权");
+    }
+    private void RecordPartyDiagnostics(PartyRosterSnapshot? roster,PartyRunicPower? power,Func<int,Color> frame,
+        bool? combat,string rosterStatus,string powerStatus)
+    {
+        var changes=partyDiagnostics.Observe(roster,power,frame,combat,execution.Enabled,layout?.HolyThresholds??new(),rosterStatus,powerStatus);
+        foreach(var change in changes) AddLog(change.Message,"party:"+change.Key);
+        // The automatic file retains all transitions even after the 1000-line
+        // window rolls over. Execution and visible panel are not prerequisites.
+        holyShieldLog.RecordPartyChanges(changes);
+    }
+    private void RecordHealingDiagnostics(HolyBuffs buffs)
+    {
+        var changes=healingDiagnostics.Observe(HOLY.Inst.HealingSample,healingFrames,buffs,layout?.HolyThresholds??new(),execution.Enabled);
+        foreach(var change in changes) AddLog(change.Message,change.Key);
+        holyShieldLog.RecordPartyChanges(changes);
+    }
     private void SetStatus(string text, bool record = true)
     {
         status.Text = text;
+        // Silent recovery must permit the same later failure to be logged again.
+        if(!record) logStates.Changed(nameof(SetStatus),text);
         if (record && previousStatus != text) AddLog(text);
         previousStatus = text;
     }
-    private void AddLog(string message)
+    private void AddLog(string message,string? key=null,string? state=null,
+        [System.Runtime.CompilerServices.CallerMemberName] string source="")
     {
+        if(!logStates.Changed(key??source,state??message)) return;
         string line = $"{DateTime.Now:HH:mm:ss.fff} {message}";
         int width = MeasureLogWidth(line);
         if (width > changes.HorizontalExtent) changes.HorizontalExtent = width;
@@ -875,7 +947,9 @@ internal sealed class DiagnosticForm : Form
         var csv = new StringBuilder(); csv.AppendLine(string.Join(",", grid.Columns.Cast<DataGridViewColumn>().Where(c => c.Index != 3).Select(c => Quote(c.HeaderText))));
         foreach (DataGridViewRow row in grid.Rows) csv.AppendLine(string.Join(",", row.Cells.Cast<DataGridViewCell>().Where(c => c.ColumnIndex != 3).Select(c => Quote(c.Value))));
         File.WriteAllText(path + ".csv", csv.ToString(), new UTF8Encoding(true));
-        File.WriteAllText(path + ".log.txt", $"最后画面时间：{capturedAt:O}\n状态：{status.Text}\n截图客户区范围：{captured.Bounds}\n" + string.Join(Environment.NewLine, log), Encoding.UTF8);
+        File.WriteAllText(path + ".log.txt", $"最后画面时间：{capturedAt:O}\n状态：{status.Text}\n截图客户区范围：{captured.Bounds}\n"+
+            $"完整神圣自动日志：{(holyShieldLog.Started?holyShieldLog.Path:"尚未创建")}\n小队当前诊断快照：\n{partyDiagnostics.Snapshot}\n治疗窗口快照：\n{healingDiagnostics.Snapshot}\n窗口变化记录：\n"+
+            string.Join(Environment.NewLine, log), Encoding.UTF8);
         savedLogs.Remember(path + ".log.txt");
         capturedLayout.Save(path + ".layout.json");
     }

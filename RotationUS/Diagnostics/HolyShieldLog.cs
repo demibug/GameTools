@@ -10,7 +10,8 @@ internal sealed class HolyShieldLog
 {
     private readonly SavedLogStore store;
     private readonly Dictionary<int,Color> frames=new(100);
-    private double lastSample=double.NegativeInfinity,lastWritten=double.NegativeInfinity;
+    private readonly List<string> pendingPartyLines=new();
+    private double lastSample=double.NegativeInfinity;
     private string lastSignature="";
     private bool remembered;
     internal string Path {get;}
@@ -33,16 +34,41 @@ internal sealed class HolyShieldLog
 
     internal void RecordFrames(Dictionary<int,Color> values,HealingThresholds thresholds,bool live,bool executing,string executionReason,double now)
     {
-        string signature=$"有效采样={live}；执行开启={executing}；执行判断={executionReason}；"+Describe(values,thresholds,live);
-        if(signature==lastSignature&&now-lastWritten<5) return;
+        string signature=$"有效采样={live}；执行开启={executing}；执行判断={executionReason}；"+
+            (live?Describe(values,thresholds,true):"采样无效，不能推断盾击阻挡原因");
+        if(signature==lastSignature) return;
+        if(Write(new[]{signature})) lastSignature=signature;
+    }
+
+    internal void RecordPartyChanges(IEnumerable<PartyLogChange> changes)
+    {
+        string timestamp=DateTimeOffset.Now.ToString("O");
+        pendingPartyLines.AddRange(changes.Select(c=>timestamp+" "+c.Message));
+        // Observe has already deduplicated these transitions. Keep them until
+        // append succeeds, including their original observation timestamps.
+        Write(Array.Empty<string>());
+    }
+
+    private bool Write(IEnumerable<string> messages)
+    {
+        var lines=messages.ToArray();
+        if(lines.Length==0 && pendingPartyLines.Count==0) return true;
         try {
             Directory.CreateDirectory(store.DefaultDirectory);
-            string header=Started?"":"神圣盾击自动诊断；记录条件与请求，不代表技能成功；无效采样不参与阻挡判断。"+Environment.NewLine;
-            File.AppendAllText(Path,header+DateTimeOffset.Now.ToString("O")+" "+signature+Environment.NewLine,new UTF8Encoding(false));
-            Started=true;lastSignature=signature;lastWritten=now;
-            if(!remembered) {store.Remember(Path);remembered=true;}
+            string header=Started?"":"神圣自动诊断（盾击／小队资料／血DK／鸣钟／美德推定窗口／神性之手）；仅状态变化写入，无定时重复；记录条件与请求，美德仅按冷却推定。"+Environment.NewLine;
+            string timestamp=DateTimeOffset.Now.ToString("O");
+            File.AppendAllText(Path,header+string.Join(Environment.NewLine,pendingPartyLines.Concat(lines.Select(line=>timestamp+" "+line)))+Environment.NewLine,new UTF8Encoding(false));
+            pendingPartyLines.Clear();
+            Started=true;
             Error=null;
-        } catch(Exception e) when(e is IOException or UnauthorizedAccessException) {Error=e.Message;}
+            // A history-index failure must not make a successfully written
+            // state get appended again on every unchanged sample.
+            if(!remembered) {
+                try {store.Remember(Path);remembered=true;}
+                catch(Exception e) when(e is IOException or UnauthorizedAccessException) {Error="日志已写入，但文件索引保存失败："+e.Message;}
+            }
+            return true;
+        } catch(Exception e) when(e is IOException or UnauthorizedAccessException) {Error=e.Message;return false;}
     }
 
     internal static string Describe(Dictionary<int,Color> values,HealingThresholds thresholds,bool live)
@@ -115,8 +141,31 @@ internal sealed class HolyShieldLog
             writer.RecordFrames(values,new(),true,false,"执行已关闭",1);
             Check(File.ReadAllText(writer.Path)==first,"unchanged samples are deduplicated");
             writer.RecordFrames(values,new(),true,false,"执行已关闭",6);
-            Check(File.ReadAllText(writer.Path).Length>first.Length,"periodic line proves sampling continued");
+            Check(File.ReadAllText(writer.Path)==first,"unchanged states never get periodic duplicate lines");
+            writer.RecordFrames(values,new(),true,false,"改变",7);
+            writer.RecordFrames(values,new(),true,false,"执行已关闭",8);
+            Check(File.ReadAllLines(writer.Path).Length==4,"A to B to A records recovery");
+            writer.RecordFrames(values,new(),false,false,"采样无效",9);
+            string invalid=File.ReadAllText(writer.Path);values[14]=Color.Yellow;
+            writer.RecordFrames(values,new(),false,false,"采样无效",30);
+            Check(File.ReadAllText(writer.Path)==invalid,"invalid pixel noise cannot repeat the same invalid state");
             Check(File.ReadAllText(System.IO.Path.Combine(directory,"saved-log-files.json")).Contains("holy-shield"),"automatic trace participates in saved-log history");
+            string blockedDirectory=System.IO.Path.Combine(directory,"blocked-index");
+            string indexTemporary=System.IO.Path.Combine(blockedDirectory,"saved-log-files.json.tmp");
+            Directory.CreateDirectory(indexTemporary);
+            var indexFailure=new HolyShieldLog(new SavedLogStore(blockedDirectory));
+            indexFailure.RecordFrames(values,new(),false,false,"采样无效",0);
+            string written=File.ReadAllText(indexFailure.Path);
+            Check(indexFailure.Started && indexFailure.Error is not null,"successful append reports history-index failure separately");
+            indexFailure.RecordFrames(values,new(),false,false,"采样无效",60);
+            Check(File.ReadAllText(indexFailure.Path)==written,"index failure cannot cause unchanged states to be appended repeatedly");
+            Directory.Delete(indexTemporary);
+            indexFailure.RecordFrames(values,new(),true,false,"恢复",61);
+            Check(indexFailure.Error is null,"history index can recover on the next change");
+            foreach(string file in Directory.GetFiles(System.IO.Path.Combine(blockedDirectory,"captures"))) File.Delete(file);
+            Directory.Delete(System.IO.Path.Combine(blockedDirectory,"captures"));
+            foreach(string file in Directory.GetFiles(blockedDirectory)) File.Delete(file);
+            Directory.Delete(blockedDirectory);
         } finally {
             foreach(string file in Directory.GetFiles(System.IO.Path.Combine(directory,"captures"))) File.Delete(file);
             Directory.Delete(System.IO.Path.Combine(directory,"captures"));

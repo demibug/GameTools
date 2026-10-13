@@ -5,7 +5,7 @@ namespace RotationUS.Diagnostics;
 
 internal sealed class HolyBuffs
 {
-    internal bool? Infusion, HandOfDivinity, DivinePurpose;
+    internal bool? Infusion, HandOfDivinity, DivinePurpose, HandExpiring;
     internal static readonly (string Key,string Label)[] Points = {
         ("holy_i1","圣光灌注Buff"),
         ("holy_hand","神性之手：瞬发圣光术"),
@@ -16,17 +16,27 @@ internal sealed class HolyBuffs
         _=>throw new ArgumentException("未知神圣特殊点",nameof(key)) };
     internal static string Label(string key)=>Points.First(p=>p.Key==key).Label;
     internal static bool UsesColor(string key)=>true;
-    internal static string Rule(string key)=>"黑=否；指定色=是；其他色=未知";
+    internal static string Rule(string key,bool handExpiryMode=false)=>key=="holy_hand"&&handExpiryMode?
+        "黑=无Buff；指定色=临期；其他色=有Buff":"黑=否；指定色=是；其他色=未知";
     internal static bool? Observe(DiagnosticLayout layout,string key,Func<SamplePoint,Color> read)
     {
         if(!layout.SpecialPoints.TryGetValue(key,out var p)||!p.Enabled||p.ReferenceColor is null) return null;
+        if(key=="holy_hand"&&p.HandExpiryMode&&p.ReferenceColor==new SampleColor(0,0,0)) return null;
         var c=read(p.Point);
         if(c.R==0&&c.G==0&&c.B==0) return false;
+        if(key=="holy_hand"&&p.HandExpiryMode) return true;
         return SampleColor.From(c)==p.ReferenceColor ? true : null;
+    }
+    internal static bool? ObserveHandExpiry(DiagnosticLayout layout,Func<SamplePoint,Color> read)
+    {
+        if(!layout.SpecialPoints.TryGetValue("holy_hand",out var p)||!p.Enabled||!p.HandExpiryMode||
+            p.ReferenceColor is null||p.ReferenceColor==new SampleColor(0,0,0)) return null;
+        var c=SampleColor.From(read(p.Point));
+        return c==p.ReferenceColor;
     }
     internal static HolyBuffs Read(DiagnosticLayout layout,Func<SamplePoint,Color> read)=>new() {
         Infusion=Observe(layout,"holy_i1",read),HandOfDivinity=Observe(layout,"holy_hand",read),
-        DivinePurpose=Observe(layout,"holy_purpose",read) };
+        DivinePurpose=Observe(layout,"holy_purpose",read),HandExpiring=ObserveHandExpiry(layout,read) };
     internal static string InstantSourceHint(DiagnosticLayout layout,Dictionary<int,Color> frames,HolyBuffs external)
     {
         var hints=new List<string>();
@@ -61,6 +71,8 @@ internal sealed class HolyBuffs
     }
     internal static string Decode(DiagnosticLayout layout,Field field,Color c)
     {
+        if(field.Id=="104"&&layout.SpecialPoints.TryGetValue("holy_hand",out var point)&&point.HandExpiryMode)
+            return Observe(layout,"holy_hand",_=>c) is not {} has?"未知 · 未配置":!has?"无Buff":ObserveHandExpiry(layout,_=>c)==true?"有Buff · 临期":"有Buff · 未临期";
         if(field.Id is "14" or "15" or "18") return HolyItemRange.Decode(c);
         if(FuryBuffs.SpecialKey(layout,field) is { } key) return Observe(layout,key,_=>c) is { } value?value?"是 · 固定点":"否 · 固定点":"未知 · 未配置或颜色不匹配";
         if(field.Id is "6" or "7" or "8" && (c.R!=c.G||c.G!=c.B)) return "未知（百分比采集失败）";
