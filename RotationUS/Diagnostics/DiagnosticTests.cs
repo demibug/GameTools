@@ -66,8 +66,8 @@ internal static class DiagnosticTests
             Reject(() => Calibration.Find(live, new Size(1600, 900)), "live mode not calibration");
         }
         using var pattern = Pattern(1);
-        Check(ClassProfiles.All.Length == 12 && ClassProfiles.All.Select(p => p.SpecId).Distinct().Count() == 12,
-            "twelve distinct specialization implementations registered");
+        Check(ClassProfiles.All.Length == 13 && ClassProfiles.All.Select(p => p.SpecId).Distinct().Count() == 13,
+            "thirteen distinct specialization implementations registered");
         foreach (var profile in ClassProfiles.All)
         {
             var identity = ClassProfiles.Identify(ClassProfiles.Encode(profile.SpecId, profile.ClassId));
@@ -402,10 +402,12 @@ internal static class DiagnosticTests
         }
         count += FloatingWindowTests.Run();
         count += ArmsTests.Run();
+        count += RetTests.Run();
         count += HolyTests.Run();
         count += HolyPolicyTests.Run();
         count += HolyPriorityTests.Run();
         count += HolyHealingWindowTests.Run();
+        count += HolySacrificeTests.Run();
         count += HolyShieldLog.RunTests();
         count += ExpandedProtocolTests.Run();
         count += PartyRosterTests.Run();

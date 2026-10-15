@@ -160,9 +160,9 @@ internal static class HolyTests
             F(id);
         }
         Hp(7,.4);Check(HOLY.Decide(f,buff,new(HolyLightMana:.50)).Key==11,"hard Light respects configured mana floor");
-        F(30);F(40);Hp(6,.49);Want(5,"low health Protection uses existing minus action5");
+        F(30);F(40);Hp(6,.59);Want(5,"low health Protection uses existing minus action5");
         F(20,false);F(9,false);Want(5,"off-GCD Protection does not wait for GCD or current heal cast");
-        Hp(6,.50);Want(0,"Protection excludes50 percent boundary");Hp(6,.51);Want(0,"Protection excludes health above50");Hp(6,.49);
+        Hp(6,.60);Want(0,"Protection excludes60 percent boundary");Hp(6,.61);Want(0,"Protection excludes health above60");Hp(6,.59);
         foreach(int id in new[]{1,2,30,40}) {
             foreach(var color in new[]{Color.Black,Color.Orange}) {
                 f[id]=color;Want(0,"Protection needs confirmed combat, live player/target, ready and usable spell");
@@ -171,7 +171,7 @@ internal static class HolyTests
         }
         Reset();F(46);F(47,false);Member(2,.4);var protectionStates=new Dictionary<int,bool>();HOLY.Inst.Buffs=buff;
         HOLY.Inst.Process(f,b,protectionStates);Check(protectionStates.ContainsKey(102),"Protection pending selection setup");
-        protectionStates.Clear();Hp(6,.49);Skill(10);HOLY.Inst.Process(f,b,protectionStates);
+        protectionStates.Clear();Hp(6,.59);Skill(10);HOLY.Inst.Process(f,b,protectionStates);
         Check(protectionStates.Count==1&&protectionStates.ContainsKey(5),"Protection bypasses pending target acknowledgement");
         // Self macros share the configured target healing line, including the
         // stationary Flash fallback. Isolate self health from target/group injury.

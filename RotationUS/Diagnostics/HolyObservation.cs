@@ -50,10 +50,11 @@ internal sealed class HolyBuffs
     }
     internal static Field[] Fields()
     {
-        string[] names={"玩家战斗中","玩家存活且未骑乘","当前目标存活","当前目标友方","当前目标治疗距离内","玩家血量","法力比例","当前目标血量","玩家未施法/引导","玩家静止","食物标记（仅采集）","当前目标可攻击","预留","预留","预留","治疗石可用","治疗药水可用","预留","有队伍","GCD就绪"};
+        string[] names={"玩家战斗中","玩家存活且未骑乘","当前目标存活","当前目标友方","当前目标治疗距离内","玩家血量","法力比例","当前目标血量","玩家未施法/引导","玩家静止","牺牲祝福冷却（专用颜色）","当前目标可攻击","预留","预留","预留","治疗石可用","治疗药水可用","预留","有队伍","GCD就绪"};
         string[] spells={"审判","神圣震击","荣耀圣令技能族","圣洁鸣钟","圣光闪现","圣光术","复仇之怒","光环掌握","美德道标","圣佑术"};
         var result=Enumerable.Range(1,100).Select(DisplayProtocol.CommonField).ToArray();
         for(int i=1;i<=20;i++) result[i-1]=new(i.ToString(),names[i-1],i is 6 or 7 or 8?ValueKind.Percent:ValueKind.FuryBoolean);
+        result[10]=new("11",names[10],ValueKind.Raw);
         for(int i=0;i<spells.Length;i++) {
             result[20+i]=new((21+i).ToString(),spells[i]+"就绪",ValueKind.FuryBoolean);
             result[30+i]=new((31+i).ToString(),spells[i]+"可用",ValueKind.FuryBoolean);
@@ -71,6 +72,7 @@ internal sealed class HolyBuffs
     }
     internal static string Decode(DiagnosticLayout layout,Field field,Color c)
     {
+        if(field.Id=="11") return HolySacrificeReading.Decode(c);
         if(field.Id=="104"&&layout.SpecialPoints.TryGetValue("holy_hand",out var point)&&point.HandExpiryMode)
             return Observe(layout,"holy_hand",_=>c) is not {} has?"未知 · 未配置":!has?"无Buff":ObserveHandExpiry(layout,_=>c)==true?"有Buff · 临期":"有Buff · 未临期";
         if(field.Id is "14" or "15" or "18") return HolyItemRange.Decode(c);

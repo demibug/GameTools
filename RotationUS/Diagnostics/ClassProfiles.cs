@@ -49,6 +49,7 @@ internal static class ClassProfiles
     private static string Resources(int count, string name) => string.Join('|', Enumerable.Range(1, count).Select(i => $"{i}={name}：至少 {i}"));
     internal static ClassProfile[] All { get; } = new ClassProfile[]
     {
+        new(70, 2, "cjq", "圣骑士", "惩戒", RetBuffs.Fields(), () => CJQ.Inst.skipKeys, CJQ.Inst.Process, true),
         new(73, 1, "fz", "战士", "防护", ProtectionFields.All, () => FZ.Inst.skipKeys, FZ.Inst.Process, true),
         new(72, 1, "kbz", "战士", "狂暴", FuryBuffs.Fields(), () => KBZ.Inst.skipKeys, KBZ.Inst.Process, true),
         new(71, 1, "wqz", "战士", "武器", ArmsBuffs.Fields(), () => WQZ.Inst.skipKeys, WQZ.Inst.Process, true),

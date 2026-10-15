@@ -55,7 +55,7 @@ internal sealed class HolyShieldLog
         if(lines.Length==0 && pendingPartyLines.Count==0) return true;
         try {
             Directory.CreateDirectory(store.DefaultDirectory);
-            string header=Started?"":"神圣自动诊断（盾击／小队资料／血DK／鸣钟／美德推定窗口／神性之手）；仅状态变化写入，无定时重复；记录条件与请求，美德仅按冷却推定。"+Environment.NewLine;
+            string header=Started?"":"神圣自动诊断（盾击／小队资料／血DK／鸣钟／美德推定窗口／神性之手／牺牲联动圣佑）；仅状态变化写入，无定时重复；记录条件与请求，技能释放仅按冷却推定。"+Environment.NewLine;
             string timestamp=DateTimeOffset.Now.ToString("O");
             File.AppendAllText(Path,header+string.Join(Environment.NewLine,pendingPartyLines.Concat(lines.Select(line=>timestamp+" "+line)))+Environment.NewLine,new UTF8Encoding(false));
             pendingPartyLines.Clear();

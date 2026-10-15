@@ -50,7 +50,7 @@ internal sealed class ProfileLayouts
             result.SpecialPoints.Remove("holy_wings");
         }
         if (!profile.HasSpecial) { result.SpecialEnabled = false; result.SpecialReferenceColor = null; }
-        if (profile.SpecId is not (65 or 71 or 72)) result.SpecialPoints.Clear();
+        if (profile.SpecId is not (65 or 70 or 71 or 72)) result.SpecialPoints.Clear();
         else result.SpecialEnabled = false;
         result.Validate(); return result;
     }

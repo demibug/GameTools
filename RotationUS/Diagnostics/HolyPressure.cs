@@ -6,7 +6,7 @@ namespace RotationUS.Diagnostics;
 // This is an observation/rate-limit policy, never evidence that a key cast a
 // spell, that Wings is active, or that any particular unit carries a Beacon.
 internal sealed record HolyCooldownContext(bool Holding=false,int LastKey=0,bool Retry=false,
-    bool Worsening=false,bool Sustained=false,IReadOnlySet<int>? ThrottledKeys=null,HolyHealingSample? Healing=null)
+    bool Worsening=false,bool Sustained=false,IReadOnlySet<int>? ThrottledKeys=null,HolyHealingSample? Healing=null,HolySacrificeContext? Sacrifice=null)
 {
     // Holding is a repeat-request throttle, not a shared cooldown waiting period.
     internal bool Allows(int key,bool emergency=false)=>ThrottledKeys is not null?

@@ -24,6 +24,7 @@ internal sealed class RotationExecution
     internal event Action? EnabledChanged;
     internal void Start(ClassProfile? profile = null)
     {
+        CJQ.Inst.Reset();
         HOLY.Inst.Reset();
         manualPauseUntil = 0; runningSpec = (profile ?? ClassProfiles.Protection).SpecId;
         if (Enabled) return;
@@ -31,6 +32,7 @@ internal sealed class RotationExecution
     }
     internal void Stop()
     {
+        CJQ.Inst.Reset();
         HOLY.Inst.Reset();
         manualPauseUntil = 0; runningSpec = 0;
         if (!Enabled) return;
@@ -43,8 +45,8 @@ internal sealed class RotationExecution
         profile ??= ClassProfiles.Protection;
         if (profile.SpecId != runningSpec || (layout.SpecId != 0 && layout.SpecId != profile.SpecId))
         { Stop(); return "职业 / 专精变化，执行已关闭"; }
-        if (!live) return "执行等待有效职业数据 / 心跳";
-        if (foreground() != game.Handle) return "执行等待游戏处于前台";
+        if (!live) { CJQ.Inst.Cancel(); if(profile.SpecId==65) HOLY.Inst.Sacrifice.Reset("采样失效：联动已清除"); return "执行等待有效职业数据 / 心跳"; }
+        if (foreground() != game.Handle) { CJQ.Inst.Cancel(); if(profile.SpecId==65) HOLY.Inst.Sacrifice.Reset("游戏不在前台：联动已清除"); return "执行等待游戏处于前台"; }
         if (manualInput?.Invoke() ?? global::Program.ClassManualInputPressed(profile)) manualPauseUntil = now + .5;
         if (now < manualPauseUntil) return "执行让出手动按键（500 ms）";
         for (int i = 0; i < layout.Frames.Length; i++) frames[i + 1] = sample.At(layout.Frames[i]);
@@ -54,12 +56,14 @@ internal sealed class RotationExecution
         if (profile.SpecId == 73) FZ.Inst.IgnorePainReferenceColor = layout.SpecialEnabled ? layout.SpecialReferenceColor?.ToColor() : null;
         if (profile.SpecId == 581 && !layout.SpecialEnabled) return "执行等待复仇专精特殊点配置";
         if (profile.SpecId == 71) WQZ.Inst.Buffs = ArmsBuffs.Read(layout, sample.At);
+        if (profile.SpecId == 70) CJQ.Inst.Buffs = RetBuffs.Read(layout, sample.At);
         if (profile.SpecId == 72) KBZ.Inst.Buffs = FuryBuffs.Read(layout, sample.At);
         if (profile.SpecId == 65) { HOLY.Inst.Buffs = HolyBuffs.Read(layout, sample.At); HOLY.Inst.Thresholds = layout.HolyThresholds; }
         // Recheck immediately before sending keys, after assembling this sample.
-        if (foreground() != game.Handle) return "执行等待游戏处于前台";
+        if (foreground() != game.Handle) { CJQ.Inst.Cancel(); if(profile.SpecId==65) HOLY.Inst.Sacrifice.Reset("游戏不在前台：联动已清除"); return "执行等待游戏处于前台"; }
         if (execute is not null) execute(frames, bars);
         else global::Program.ExecuteClassSample(profile, frames, bars);
+        if (profile.SpecId == 70) return $"{CJQ.Inst.LastDecision.Branch} · {CJQ.Inst.LastDecision.Reason}";
         if (profile.SpecId == 65) {
             string hint=HolyBuffs.InstantSourceHint(layout,frames,HOLY.Inst.Buffs);
             return HOLY.Inst.LastDecision.Reason+(hint.Length>0?" · "+hint:"");

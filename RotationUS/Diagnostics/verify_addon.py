@@ -100,7 +100,7 @@ HijiAddon.UpdateBear = function() updates=updates+1 end
 runtime.execute((root / "ClassDriver.lua").read_text(encoding="utf-8-sig"))
 runtime.execute(r'''
 warFrame = named.HijiAddonClassDriver
-for _, name in ipairs({"UpdateHoly","UpdateFQ","UpdateKtz","UpdateUDK","UpdateJiuMonk","UpdateWindMonk","UpdateDht"}) do
+for _, name in ipairs({"UpdateHoly","UpdateFQ","UpdateCjq","UpdateKtz","UpdateUDK","UpdateJiuMonk","UpdateWindMonk","UpdateDht"}) do
     HijiAddon[name] = function() updates=updates+1 end
 end
 warFrame.scripts.OnUpdate(warFrame, 1.1)
@@ -148,7 +148,7 @@ assert(not HijiAddon.frame_21.shown and not protectionBar.shown and HijiAddon.ba
 assert(rgb(named.HijiAddonDiagnosticMarker3.textures[1],0,0,0))
 warFrame.scripts.OnUpdate(warFrame,1.1)
 assert(updates==3 and rgb(named.HijiAddonDiagnosticMarker2.textures[1],71/255,0,1/255))
-local cases={{"DRUID",2,103},{"DRUID",3,104},{"PALADIN",1,65},{"PALADIN",2,66},{"ROGUE",2,260},{"DEATHKNIGHT",3,252},{"MONK",1,268},{"MONK",3,269},{"DEMONHUNTER",2,581}}
+local cases={{"DRUID",2,103},{"DRUID",3,104},{"PALADIN",1,65},{"PALADIN",2,66},{"PALADIN",3,70},{"ROGUE",2,260},{"DEATHKNIGHT",3,252},{"MONK",1,268},{"MONK",3,269},{"DEMONHUNTER",2,581}}
 for _,case in ipairs(cases) do
     displaceLayout()
     class,spec=case[1],case[2]
@@ -204,4 +204,4 @@ displaceLayout()
 warFrame.scripts.OnEvent(warFrame,"PLAYER_SPECIALIZATION_CHANGED","player")
 assertSharedLayout()
 ''')
-print("PASS: shared right-side layout restored across classes/specs/talent changes and locate mode; calibration lifecycle, successful-data heartbeat, twelve class routes including Fury/Holy, automatic spec switching/timer resets, resource-bar range/visibility/cache, and unsupported class clearing.")
+print("PASS: shared right-side layout restored across classes/specs/talent changes and locate mode; calibration lifecycle, successful-data heartbeat, thirteen class routes including Fury/Holy/Retribution, automatic spec switching/timer resets, resource-bar range/visibility/cache, and unsupported class clearing.")

@@ -41,7 +41,7 @@ internal sealed class FuryBuffs
         if (field.Bar || !int.TryParse(field.Id, out int id)) return null;
         if (layout.SpecId == 65) return HolyBuffs.Points.FirstOrDefault(p=>HolyBuffs.PointId(p.Key)==id).Key;
         int index = id - DisplayProtocol.SpecialStart;
-        var points = layout.SpecId == 65 ? HolyBuffs.Points : layout.SpecId == 71 ? ArmsBuffs.Points : layout.SpecId == 72 ? Points : Array.Empty<(string Key, string Label)>();
+        var points = layout.SpecId == 65 ? HolyBuffs.Points : layout.SpecId == 70 ? RetBuffs.Points : layout.SpecId == 71 ? ArmsBuffs.Points : layout.SpecId == 72 ? Points : Array.Empty<(string Key, string Label)>();
         return index >= 0 && index < points.Length ? points[index].Key : null;
     }
     internal static SamplePoint? Point(DiagnosticLayout layout, Field field)

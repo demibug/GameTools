@@ -17,9 +17,16 @@ internal sealed class HOLY
     private readonly HolyPressure pressure=new();
     private readonly HolyHealingWindow healingWindow=new();
     private HolyHealingSample? preparedHealing;
+    private double preparedAt;
+    internal HolySacrificeProtection Sacrifice {get;}=new();
     internal HolyHealingSample HealingSample=>healingWindow.Current;
-    internal HolyHealingSample ObserveHealing(Dictionary<int,Color> frames,HealingThresholds t,double now,bool live=true)
-        =>preparedHealing=healingWindow.Observe(frames,t,now,live);
+    internal HolyHealingSample ObserveHealing(Dictionary<int,Color> frames,HealingThresholds t,double now,bool live=true,bool executing=true,bool foreground=true)
+    {
+        preparedAt=now;
+        if(live&&executing&&!foreground) Sacrifice.Reset("游戏不在前台：联动已清除");
+        else Sacrifice.Observe(frames,now,live,executing);
+        return preparedHealing=healingWindow.Observe(frames,t,now,live);
+    }
     internal PartyRosterSnapshot? PartyRoster {get;private set;}
     internal PartyRunicPower? RunicPower {get;private set;}
     internal void SetRunicPower(PartyRunicPower? value)
@@ -33,12 +40,14 @@ internal sealed class HOLY
         if(value is null || RunicPower?.Roster.Matches(value)!=true) RunicPower=null;
     }
     private void ResetSelection() {pendingSlot=confirmations=0;reevaluateSelection=false;}
-    internal void Reset() {ResetSelection();bloodReducedMask=0;pressure.Reset();healingWindow.Reset();preparedHealing=null;}
+    internal void Reset() {ResetSelection();bloodReducedMask=0;pressure.Reset();healingWindow.Reset();preparedHealing=null;Sacrifice.Reset();}
     public void Process(Dictionary<int,Color> frames,Dictionary<int,Color> bars,Dictionary<int,bool> states)=>Process(frames,bars,states,null);
     internal void Process(Dictionary<int,Color> frames,Dictionary<int,Color> bars,Dictionary<int,bool> states,double? observationTime)
     {
         bool? F(int id)=>frames.TryGetValue(id,out var c)?FuryBuffs.Boolean(c):null;
         double now=observationTime??(double)System.Diagnostics.Stopwatch.GetTimestamp()/System.Diagnostics.Stopwatch.Frequency;
+        double sacrificeAt=observationTime??(preparedHealing is not null?preparedAt:now);
+        if(observationTime is not null||preparedHealing is null) Sacrifice.Observe(frames,sacrificeAt);
         var observed=observationTime is not null?healingWindow.Observe(frames,Thresholds,now):
             preparedHealing??healingWindow.Observe(frames,Thresholds,now);
         preparedHealing=null;
@@ -51,7 +60,7 @@ internal sealed class HOLY
         // the same recipient. Retain this request while the GCD blocks Decide.
         if(pendingSlot>0 && nextBloodMask!=bloodReducedMask) reevaluateSelection=true;
         bloodReducedMask=nextBloodMask;
-        var decision=Decide(frames,Buffs,Thresholds,pressure.Observe(frames,Thresholds,now) with {Healing=observed},PartyRoster,RunicPower,
+        var decision=Decide(frames,Buffs,Thresholds,pressure.Observe(frames,Thresholds,now) with {Healing=observed,Sacrifice=Sacrifice.Current},PartyRoster,RunicPower,
             reevaluateSelection?pendingSlot:0);
         // All members recovered while selecting: a confirmed safe damage action
         // replaces the obsolete heal selection without waiting for its target.
@@ -61,6 +70,7 @@ internal sealed class HOLY
         if(pendingSlot>0 && decision.Key is 1 or 2 or 3 or 5 or 14 or 22 or 23)
         {
             LastDecision=decision;states[decision.Key]=true;
+            if(decision.Key==5) Sacrifice.Requested(sacrificeAt);
             pressure.Requested(decision.Key,frames,Thresholds,now);
             return;
         }
@@ -83,6 +93,7 @@ internal sealed class HOLY
         }
         if(LastDecision.Key!=0) {
             states[LastDecision.Key]=true;
+            if(LastDecision.Key==5) Sacrifice.Requested(sacrificeAt);
             pressure.Requested(LastDecision.Key,frames,Thresholds,now);
         }
     }
@@ -103,6 +114,12 @@ internal sealed class HOLY
         bool virtueWindow=!raid&&context.Healing?.VirtueActive==true;
         if(F(41)!=false||F(19)!=true||party?.Members.Any(m=>m.Role is 1 or 2)!=true) party=null;
         var group=HolyTriage.Analyze(frames,raid,t);
+        if(P(6)<=.40&&F(16)==true) return new(22,"治疗石：血量≤40%");
+        if(P(6)<=.40&&F(17)==true) return new(23,"治疗药水：血量≤40%");
+        // Independent of HP and target. Global combat/alive/protocol guards above
+        // still apply; this self defensive precedes damage and ordinary healing.
+        if(F(19)==true&&F(41) is not null&&context.Sacrifice?.Request==true&&Skill(10))
+            return new(5,"牺牲祝福后自动圣佑术（-）：无视血量，战斗且存活未骑乘",true);
         // Shield damage has first spell priority only when every observed living
         // member is healthy. Unknown members cannot be treated as full health.
         if(F(3)==true&&F(4)==false&&F(12)==true&&F(95)==true&&F(97)==true&&F(98)==true&&
@@ -110,11 +127,9 @@ internal sealed class HOLY
             P(6)>=t.HealBelow&&group.Reliable&&group.Unknown==0&&group.Injured==0&&!group.Major&&
             F(92)==true&&F(13)==true)
             return new(18,"全队存活成员均≥治疗线、5圣能且震击至少2充能：近战盾击防溢出（Shift+.）");
-        if(P(6)<=.40&&F(16)==true) return new(22,"治疗石：血量≤40%");
-        if(P(6)<=.40&&F(17)==true) return new(23,"治疗药水：血量≤40%");
         // Divine Protection is off the GCD; target acknowledgement and an
         // active healing cast must not postpone this self defensive.
-        if(P(6)<.50&&Skill(10)) return new(5,"自身低于50%：圣佑术（-）");
+        if(P(6)<.60&&Skill(10)&&!(F(19)==true&&F(41) is not null&&context.Sacrifice?.Holding==true)) return new(5,"自身低于60%：圣佑术（-）");
         if(F(9)!=true||F(20)!=true) return new(0,"等待玩家施法结束或GCD");
         bool emergency=raid?F(19)==true&&group.Reliable&&group.Urgent>=2:partyToll.Emergency;
         bool mastery=t.AutoAuraMastery&&t.AuraMasteryHasToll&&(!raid||t.RaidAutoAuraMastery)&&Skill(8)&&context.Allows(14,emergency);

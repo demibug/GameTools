@@ -36,6 +36,9 @@ internal sealed class DiagnosticForm : Form
     private readonly CheckBox specialEnabled = new() { Text = "启用特殊点 101", AutoSize = true };
     private readonly FuryPointSettings furyPoints = new();
     private readonly ArmsPointSettings armsPoints = new();
+    private readonly RetPointSettings retPoints = new();
+    private readonly TableLayoutPanel retSettings = new() { Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Visible=false };
+    private readonly FlowLayoutPanel retOptions = new() { Dock=DockStyle.Fill,WrapContents=false };
     private readonly HolyPointSettings holyPoints = new();
     private readonly TableLayoutPanel holySettings = new() { Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Visible=false };
     private readonly FlowLayoutPanel holyOptions = new() { Dock=DockStyle.Fill,WrapContents=false };
@@ -175,6 +178,17 @@ internal sealed class DiagnosticForm : Form
             if(updated.SpecialPoints.TryGetValue(key,out var point)) point.Enabled=false;
             SaveSpecialLayout(updated,key);
         };
+        retPoints.PickRequested+=key=>PickSpecial(key);
+        retPoints.SaveRequested+=key=>SaveSpecial(key);
+        retPoints.DisableRequested+=key=> {
+            if(layout is null || activeProfile?.SpecId!=70) return;
+            StopExecution();var updated=layout.Copy();
+            if(updated.SpecialPoints.TryGetValue(key,out var point)) point.Enabled=false;
+            SaveSpecialLayout(updated,key);
+        };
+        retSettings.RowStyles.Add(new(SizeType.Absolute,240));
+        retSettings.RowStyles.Add(new(SizeType.Percent,100));
+        retSettings.Controls.Add(retPoints,0,0);retSettings.Controls.Add(retOptions,0,1);
         armsPoints.PickRequested+=key=>PickSpecial(key);
         armsPoints.SaveRequested+=key=>SaveSpecial(key);
         armsPoints.DisableRequested+=key=>
@@ -223,7 +237,7 @@ internal sealed class DiagnosticForm : Form
         furyOptions.Controls.Add(thunderMode);
         furySettings.Controls.Add(furyOptions,0,1);
         var settingsHost=new Panel {Dock=DockStyle.Fill};
-        settingsHost.Controls.Add(settings);settingsHost.Controls.Add(furySettings);settingsHost.Controls.Add(armsSettings);settingsHost.Controls.Add(holySettings);
+        settingsHost.Controls.Add(retSettings);settingsHost.Controls.Add(settings);settingsHost.Controls.Add(furySettings);settingsHost.Controls.Add(armsSettings);settingsHost.Controls.Add(holySettings);
         detailContent.Controls.Add(settingsHost, 0, 0);
         var scroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.FromArgb(245, 247, 250) };
         scroll.Controls.Add(preview); detailContent.Controls.Add(scroll, 0, 1);
@@ -375,13 +389,15 @@ internal sealed class DiagnosticForm : Form
         specialEnabled.Enabled = specialX.Enabled = specialY.Enabled = pickSpecial.Enabled = special;
         bool fury = activeProfile?.SpecId == 72;
         bool arms = activeProfile?.SpecId == 71;
+        bool ret = activeProfile?.SpecId == 70;
         bool holy = activeProfile?.SpecId == 65;
-        furySettings.Visible=fury;armsSettings.Visible=arms;holySettings.Visible=holy;legacySettings.Visible=!fury&&!arms&&!holy;thunderMode.Visible=fury;
-        settingsHeight.Height=holy?258:arms?278:fury?218:100;previewHeight.Height=fury||arms||holy?60:125;logsHeight.Height=fury||arms||holy?110:155;
-        Control executionParent=holy?holyOptions:arms?armsOptions:fury?furyOptions:legacySettings;
+        furySettings.Visible=fury;armsSettings.Visible=arms;holySettings.Visible=holy;retSettings.Visible=ret;legacySettings.Visible=!fury&&!arms&&!holy&&!ret;thunderMode.Visible=fury;
+        settingsHeight.Height=ret?278:holy?258:arms?278:fury?218:100;previewHeight.Height=fury||arms||holy||ret?60:125;logsHeight.Height=fury||arms||holy||ret?110:155;
+        Control executionParent=ret?retOptions:holy?holyOptions:arms?armsOptions:fury?furyOptions:legacySettings;
         if(executionStatus.Parent!=executionParent) executionParent.Controls.Add(executionStatus);
         furyPoints.LoadSettings(fury?layout:null,committedFuryKey);
         armsPoints.LoadSettings(arms?layout:null,committedFuryKey);
+        retPoints.LoadSettings(ret?layout:null,committedFuryKey);
         holyPoints.LoadSettings(holy?layout:null,committedFuryKey);
         holyRaidMastery.Enabled=holy&&layout is not null;
         if (layout is null) return;
@@ -525,7 +541,7 @@ internal sealed class DiagnosticForm : Form
     }
     private void SaveSpecial(string? furyKey=null)
     {
-        var pending=furyKey is null?pendingSpecialPick:activeProfile?.SpecId==65?holyPoints.Rows[furyKey].Pending:activeProfile?.SpecId==71?armsPoints.Rows[furyKey].Pending:furyPoints.Rows[furyKey].Pending;
+        var pending=furyKey is null?pendingSpecialPick:activeProfile?.SpecId==65?holyPoints.Rows[furyKey].Pending:activeProfile?.SpecId==70?retPoints.Rows[furyKey].Pending:activeProfile?.SpecId==71?armsPoints.Rows[furyKey].Pending:furyPoints.Rows[furyKey].Pending;
         if (updatingControls || modalOperation || pending is not { } selected) return;
         StopExecution();
         try
@@ -541,7 +557,7 @@ internal sealed class DiagnosticForm : Form
                 InvalidateSpecialPick();
                 throw new InvalidOperationException("职业 / 专精已变化，请在当前职业重新取点。");
             }
-            SaveSpecialLayout(furyKey is null?BuildSpecialLayout(selected):activeProfile?.SpecId==65?holyPoints.BuildLayout(layout,furyKey):activeProfile?.SpecId==71?armsPoints.BuildLayout(layout,furyKey):furyPoints.BuildLayout(layout,furyKey),furyKey);
+            SaveSpecialLayout(furyKey is null?BuildSpecialLayout(selected):activeProfile?.SpecId==65?holyPoints.BuildLayout(layout,furyKey):activeProfile?.SpecId==70?retPoints.BuildLayout(layout,furyKey):activeProfile?.SpecId==71?armsPoints.BuildLayout(layout,furyKey):furyPoints.BuildLayout(layout,furyKey),furyKey);
         }
         catch (Exception e) { SetUnknown(e.Message); }
     }
@@ -558,8 +574,9 @@ internal sealed class DiagnosticForm : Form
         pendingSpecialPick = null; saveSpecial.Enabled = false;
         furyPoints.InvalidatePicks();
         armsPoints.InvalidatePicks();
+        retPoints.InvalidatePicks();
         holyPoints.InvalidatePicks();
-        if (layout is not null && activeProfile?.SpecId is not (71 or 72))
+        if (layout is not null && activeProfile?.SpecId is not (70 or 71 or 72))
             specialColor.Text = $"已保存取色 RGB：{layout.SpecialReferenceColor?.ToString() ?? "未采集"}；请截图取点 / 取色后保存。";
     }
     internal void StageSpecialPick(PickedPixel selected)
@@ -579,14 +596,14 @@ internal sealed class DiagnosticForm : Form
         if (activeProfile is null || !activeProfile.HasSpecial) throw new InvalidOperationException("当前职业没有特殊点配置。");
         profileLayouts.Save(activeProfile, updated); layout = updated; ApplyControls(furyKey);
         samplingLayout = null; presentation.Reset();
-        AddLog(activeProfile.SpecId == 65 ? $"已保存神圣配置：{(furyKey is null?"治疗设置":HolyBuffs.Label(furyKey))} · {layoutPath}" : activeProfile.SpecId == 71 ? $"已保存武器特殊点：{(furyKey is null ? "武器光环" : ArmsBuffs.Label(furyKey))} · {layoutPath}" : activeProfile.SpecId == 72 ? $"已保存 {(furyKey is null?"狂暴特殊点":FuryBuffs.Label(furyKey))} · {layout.ThunderMode} · {layoutPath}" : $"{activeProfile.DisplayName}特殊点 101：({updated.Special.X}, {updated.Special.Y})，取色 RGB {updated.SpecialReferenceColor?.ToString() ?? "未采集"}，{(updated.SpecialEnabled ? "启用" : "停用")}；已保存 {layoutPath}");
+        AddLog(activeProfile.SpecId == 70 ? $"已保存惩戒特殊点：{(furyKey is null?"惩戒光环":RetBuffs.Label(furyKey))} · {layoutPath}" : activeProfile.SpecId == 65 ? $"已保存神圣配置：{(furyKey is null?"治疗设置":HolyBuffs.Label(furyKey))} · {layoutPath}" : activeProfile.SpecId == 71 ? $"已保存武器特殊点：{(furyKey is null ? "武器光环" : ArmsBuffs.Label(furyKey))} · {layoutPath}" : activeProfile.SpecId == 72 ? $"已保存 {(furyKey is null?"狂暴特殊点":FuryBuffs.Label(furyKey))} · {layout.ThunderMode} · {layoutPath}" : $"{activeProfile.DisplayName}特殊点 101：({updated.Special.X}, {updated.Special.Y})，取色 RGB {updated.SpecialReferenceColor?.ToString() ?? "未采集"}，{(updated.SpecialEnabled ? "启用" : "停用")}；已保存 {layoutPath}");
         lastValues.Clear(); changedTimes.Clear();
         frozen = false; pause.Text = "暂停查看"; heartbeat.Reset();
     }
     private async void PickSpecial(string? furyKey=null)
     {
         if (modalOperation) return;
-        if(furyKey is null) InvalidateSpecialPick(); else if(activeProfile?.SpecId==65) holyPoints.InvalidatePick(furyKey); else if(activeProfile?.SpecId==71) armsPoints.InvalidatePick(furyKey); else furyPoints.InvalidatePick(furyKey);
+        if(furyKey is null) InvalidateSpecialPick(); else if(activeProfile?.SpecId==65) holyPoints.InvalidatePick(furyKey); else if(activeProfile?.SpecId==70) retPoints.InvalidatePick(furyKey); else if(activeProfile?.SpecId==71) armsPoints.InvalidatePick(furyKey); else furyPoints.InvalidatePick(furyKey);
         StopExecution();
         modalOperation = true; timer.Stop();
         try
@@ -606,12 +623,13 @@ internal sealed class DiagnosticForm : Form
             if (ClassProfiles.Identify(screenshot.At(layout.Markers[1])) != identity)
                 throw new InvalidOperationException("职业 / 专精已变化，请等待识别后重新取点。");
             using var picker = new SpecialPointPicker(screenshot.Image, bounds, activeProfile.DisplayName,
-                furyKey is not null && activeProfile.SpecId == 65 ? $"{HolyBuffs.Label(furyKey)}：{HolyBuffs.Rule(furyKey,layout.SpecialPoints.GetValueOrDefault(furyKey)?.HandExpiryMode==true)}；选择稳定的状态指示区域，避开图标边缘" : furyKey is not null && activeProfile.SpecId == 71 ? $"{ArmsBuffs.Label(furyKey)}：{ArmsBuffs.Rule(furyKey)}；请采集指定状态的参考色" : furyKey is not null ? $"{FuryBuffs.Label(furyKey)}："+(FuryBuffs.UsesTimeColor(furyKey)?"请在临近结束时取非黑参考色；纯黑=缺失":"纯黑=缺失；任何非黑=存在；所取颜色仅记录") : activeProfile.SpecId == 73 ? "纯黑或等于取色 RGB 时，判定需要施放" : "沿用原复仇代码的非黑像素判断");
+                furyKey is not null && activeProfile.SpecId == 70 ? $"{RetBuffs.Label(furyKey)}：{RetBuffs.Rule(furyKey)}；目标减益必须跟随当前目标" : furyKey is not null && activeProfile.SpecId == 65 ? $"{HolyBuffs.Label(furyKey)}：{HolyBuffs.Rule(furyKey,layout.SpecialPoints.GetValueOrDefault(furyKey)?.HandExpiryMode==true)}；选择稳定的状态指示区域，避开图标边缘" : furyKey is not null && activeProfile.SpecId == 71 ? $"{ArmsBuffs.Label(furyKey)}：{ArmsBuffs.Rule(furyKey)}；请采集指定状态的参考色" : furyKey is not null ? $"{FuryBuffs.Label(furyKey)}："+(FuryBuffs.UsesTimeColor(furyKey)?"请在临近结束时取非黑参考色；纯黑=缺失":"纯黑=缺失；任何非黑=存在；所取颜色仅记录") : activeProfile.SpecId == 73 ? "纯黑或等于取色 RGB 时，判定需要施放" : "沿用原复仇代码的非黑像素判断");
             if (picker.ShowDialog() != DialogResult.OK || picker.Selection is not { } selected) return;
             if (GameCapture.ClientSize(game) != size)
                 throw new InvalidOperationException("选点过程中游戏尺寸变化，请重新选取。");
             if(furyKey is null) StageSpecialPick(selected);
             else if(activeProfile.SpecId==65) { holyPoints.Stage(furyKey,selected);SetStatus(HolyBuffs.Label(furyKey)+"取点完成，请点击该行的保存。"); }
+            else if(activeProfile.SpecId==70) { retPoints.Stage(furyKey,selected);SetStatus(RetBuffs.Label(furyKey)+"取点完成，请点击该行保存。"); }
             else if(activeProfile.SpecId==71) { armsPoints.Stage(furyKey,selected);SetStatus(ArmsBuffs.Label(furyKey)+"取点完成，请点击该行的保存。"); }
             else { furyPoints.Stage(furyKey,selected);SetStatus(FuryBuffs.Label(furyKey)+"取点完成，请点击该行的保存。"); }
         }
@@ -692,7 +710,7 @@ internal sealed class DiagnosticForm : Form
             HOLY.Inst.SetRunicPower(power);
             if(activeProfile?.SpecId==65) {
                 for(int i=0;i<layout.Frames.Length;i++) healingFrames[i+1]=next.At(layout.Frames[i]);
-                HOLY.Inst.ObserveHealing(healingFrames,layout.HolyThresholds,clock.Elapsed.TotalSeconds,live);
+                HOLY.Inst.ObserveHealing(healingFrames,layout.HolyThresholds,clock.Elapsed.TotalSeconds,live,execution.Enabled,global::Program.GetForegroundWindow()==game.Handle);
                 if(!live) healingFrames.Clear();
             }
             string reason = mode == 4 ? "定位图案" : activeProfile is null ? identity.DisplayName : mode != 2 ? "插件尚未输出 / 需重载 / 坐标不匹配" : !alive ? "心跳等待或超过 1.5 秒未变化" : "";
@@ -732,6 +750,13 @@ internal sealed class DiagnosticForm : Form
                 string explanation = $"{decision.Branch} · {decision.Reason} · {(decision.Mode.Length > 0 ? decision.Mode : layout.ThunderMode)} · 鲁莽来源=成功施法计时";
                 if (!execution.Enabled) executionStatus.Text = "诊断（执行关闭）：" + explanation;
             }
+            if (live && activeProfile?.SpecId == 70 && !execution.Enabled)
+            {
+                var f=Enumerable.Range(1,DisplayProtocol.CellCount).ToDictionary(i=>i,i=>next.At(layout.Frames[i-1]));
+                var b=Enumerable.Range(1,DisplayProtocol.CellCount).ToDictionary(i=>i,i=>next.At(layout.Bars[i-1]));
+                var decision=CJQ.Decide(f,b,RetBuffs.Read(layout,next.At));
+                executionStatus.Text=$"诊断（执行关闭）：{decision.Branch} · {decision.Reason}";
+            }
             if (live && activeProfile?.SpecId == 71 && !execution.Enabled)
             {
                 var f = Enumerable.Range(1, DisplayProtocol.CellCount).ToDictionary(i => i, i => next.At(layout.Frames[i-1]));
@@ -750,7 +775,7 @@ internal sealed class DiagnosticForm : Form
             int charges = next.At(layout.Bars[1]).R == 255 ? 2 : next.At(layout.Bars[0]).R == 255 ? 1 : 0;
             string extra = activeProfile?.SpecId == 73 ? $" · 盾牌格挡充能 {charges}" : "";
             SetStatus(live ? $"{identity.DisplayName} · 心跳正常{extra} · {size.Width}×{size.Height} · {capturedAt:HH:mm:ss.fff}" : $"{reason} · 原始画面 {capturedAt:HH:mm:ss.fff}", false);
-            if (execution.Enabled || activeProfile?.SpecId is not (65 or 71 or 72) || !live) executionStatus.Text = executionText;
+            if (execution.Enabled || activeProfile?.SpecId is not (65 or 70 or 71 or 72) || !live) executionStatus.Text = executionText;
             if(live&&activeProfile?.SpecId==65&&HOLY.Inst.HealingSample.VirtueActive)
                 executionStatus.Text+=$" · 美德推定窗口 {HOLY.Inst.HealingSample.VirtueRemaining:F1}秒";
         }
@@ -771,9 +796,9 @@ internal sealed class DiagnosticForm : Form
             {
                 var field = fields[index]; var row = grid.Rows[index];
                 SamplePoint? point = FuryBuffs.Point(layout, field);
-                if (point is null) { row.Cells[2].Value = "未设置"; row.Cells[4].Value = "—"; row.Cells[5].Value = layout.SpecId is 71 or 72?"未知 · 特殊点未配置/停用":"未启用（手动校准）"; row.Cells[3].Style.BackColor = Color.White; continue; }
+                if (point is null) { row.Cells[2].Value = "未设置"; row.Cells[4].Value = "—"; row.Cells[5].Value = layout.SpecId is 70 or 71 or 72?"未知 · 特殊点未配置/停用":"未启用（手动校准）"; row.Cells[3].Style.BackColor = Color.White; continue; }
                 var color = next.At(point);
-                string rgb = Colors.Rgb(color), value = live ? layout.SpecId == 65 ? HolyBuffs.Decode(layout,field,color) : layout.SpecId == 71 ? ArmsBuffs.Decode(layout, field, color,next.At) : FuryBuffs.Decode(layout, field, color,next.At) : $"未知 · {reason}";
+                string rgb = Colors.Rgb(color), value = live ? layout.SpecId == 70 ? RetBuffs.Decode(layout,field,color) : layout.SpecId == 65 ? HolyBuffs.Decode(layout,field,color) : layout.SpecId == 71 ? ArmsBuffs.Decode(layout, field, color,next.At) : FuryBuffs.Decode(layout, field, color,next.At) : $"未知 · {reason}";
                 string coordinates = $"{point.X}, {point.Y}";
                 if (!Equals(row.Cells[2].Value, coordinates)) row.Cells[2].Value = coordinates;
                 string signature = $"{rgb}|{value}";
@@ -865,6 +890,7 @@ internal sealed class DiagnosticForm : Form
     private void RecordHealingDiagnostics(HolyBuffs buffs)
     {
         var changes=healingDiagnostics.Observe(HOLY.Inst.HealingSample,healingFrames,buffs,layout?.HolyThresholds??new(),execution.Enabled);
+        changes.AddRange(HOLY.Inst.Sacrifice.DrainChanges());
         foreach(var change in changes) AddLog(change.Message,change.Key);
         holyShieldLog.RecordPartyChanges(changes);
     }
@@ -948,7 +974,7 @@ internal sealed class DiagnosticForm : Form
         foreach (DataGridViewRow row in grid.Rows) csv.AppendLine(string.Join(",", row.Cells.Cast<DataGridViewCell>().Where(c => c.ColumnIndex != 3).Select(c => Quote(c.Value))));
         File.WriteAllText(path + ".csv", csv.ToString(), new UTF8Encoding(true));
         File.WriteAllText(path + ".log.txt", $"最后画面时间：{capturedAt:O}\n状态：{status.Text}\n截图客户区范围：{captured.Bounds}\n"+
-            $"完整神圣自动日志：{(holyShieldLog.Started?holyShieldLog.Path:"尚未创建")}\n小队当前诊断快照：\n{partyDiagnostics.Snapshot}\n治疗窗口快照：\n{healingDiagnostics.Snapshot}\n窗口变化记录：\n"+
+            $"完整神圣自动日志：{(holyShieldLog.Started?holyShieldLog.Path:"尚未创建")}\n小队当前诊断快照：\n{partyDiagnostics.Snapshot}\n治疗窗口快照：\n{healingDiagnostics.Snapshot}\n牺牲联动：{HOLY.Inst.Sacrifice.Status}\n窗口变化记录：\n"+
             string.Join(Environment.NewLine, log), Encoding.UTF8);
         savedLogs.Remember(path + ".log.txt");
         capturedLayout.Save(path + ".layout.json");
@@ -962,7 +988,7 @@ internal sealed class DiagnosticForm : Form
             var field = fields[i]; var point = FuryBuffs.Point(layout!, field);
             if (point is null) continue;
             var color = image.GetPixel(point.X, point.Y); var row = grid.Rows[i];
-            row.Cells[2].Value = $"{point.X}, {point.Y}"; row.Cells[3].Style.BackColor = color; row.Cells[4].Value = Colors.Rgb(color); row.Cells[5].Value = layout!.SpecId == 65 ? HolyBuffs.Decode(layout,field,color) : layout.SpecId == 71 ? ArmsBuffs.Decode(layout, field, color,p=>image.GetPixel(p.X,p.Y)) : FuryBuffs.Decode(layout, field, color,p=>image.GetPixel(p.X,p.Y));
+            row.Cells[2].Value = $"{point.X}, {point.Y}"; row.Cells[3].Style.BackColor = color; row.Cells[4].Value = Colors.Rgb(color); row.Cells[5].Value = layout!.SpecId == 70 ? RetBuffs.Decode(layout,field,color) : layout.SpecId == 65 ? HolyBuffs.Decode(layout,field,color) : layout.SpecId == 71 ? ArmsBuffs.Decode(layout, field, color,p=>image.GetPixel(p.X,p.Y)) : FuryBuffs.Decode(layout, field, color,p=>image.GetPixel(p.X,p.Y));
         }
         SetStatus("合成画面，仅供窗口布局检查 · 当前专精字段与原始 RGB");
         if (activeProfile?.SpecId == 65) AddLog("神圣三点：按Buff有无参考色解码；当前为合成画面。");

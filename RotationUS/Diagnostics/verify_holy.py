@@ -114,12 +114,41 @@ for _,entry in ipairs({{16,5512},{17,211879}}) do
 end
 C_Item.GetItemCooldown,C_Item.GetItemCount=savedItemCooldown,savedItemCount
 HijiAddon.UpdateHoly()
-assert(HijiAddon.frame_11.shown and rgb(HijiAddon.texture_11,0,0,0),"food collection retained when inactive")
-tracking={{name="餐饮供应商",active=true}};HijiAddon.UpdateHoly()
-assert(HijiAddon.frame_11.shown and rgb(HijiAddon.texture_11,1,1,1),"food collection retained when active")
-tracking[1].active=false;HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_11,0,0,0))
-trackingFail=true;HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_11,1,.5,0),"food collection failures stay unknown")
-trackingFail=false;tracking={};HijiAddon.UpdateHoly()
+assert(HijiAddon.frame_11.shown and rgb(HijiAddon.texture_11,0,1,1),"Sacrifice ready palette differs from legacy food")
+local savedSacCooldown,savedSacInfo=C_Spell.GetSpellCooldownDuration,C_Spell.GetSpellCooldown
+local sacMode="ready",sacInfo
+C_Spell.GetSpellCooldownDuration=function(id,ignoreGCD)
+    if id~=6940 then return savedSacCooldown(id,ignoreGCD) end
+    assert(ignoreGCD==true,"Sacrifice must exclude the GCD")
+    if sacMode=="error" then error("cooldown unavailable") end
+    if sacMode=="nil" then return nil end
+    return {EvaluateRemainingDuration=function(_,curve)
+        -- Only the native display mock resolves secret timing. Addon code
+        -- receives a handle with no readable start or duration members.
+        local remaining=secret(sacMode=="cooling" and 60 or 0)
+        return curve.points[remaining.value>0 and 2 or 1][2]
+    end}
+end
+C_Spell.GetSpellCooldown=function(id)
+    if id~=6940 then return savedSacInfo and savedSacInfo(id) end
+    return sacInfo
+end
+for _,mode in ipairs({"ready","cooling","ready"}) do
+    sacMode=mode;HijiAddon.UpdateHoly()
+    assert(mode=="ready" and rgb(HijiAddon.texture_11,0,1,1) or mode=="cooling" and rgb(HijiAddon.texture_11,128/255,0,1),"Sacrifice native duration palette")
+end
+sacMode="error";HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_11,1,.5,0),"failed cooldown clears old ready")
+sacMode="nil";sacInfo={isEnabled=true,isActive=false};HijiAddon.UpdateHoly()
+assert(rgb(HijiAddon.texture_11,0,1,1),"explicit inactivity fallback proves readiness")
+for _,info in ipairs({{isEnabled=true,isActive=true},{isEnabled=false,isActive=false},{isEnabled=true,isActive=secret(false)},{isEnabled=true}}) do
+    sacInfo=info;HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_11,1,.5,0),"ambiguous/GCD/restricted cooldown is never a Sacrifice edge")
+end
+sacInfo=nil;HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_11,1,.5,0),"nil cooldown data unknown")
+sacMode="ready";unknownSpells[6940]=true;HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_11,1,.5,0),"unlearned Sacrifice unknown rather than a cooldown transition")
+unknownSpells[6940]=nil
+C_Spell.GetSpellCooldownDuration,C_Spell.GetSpellCooldown=savedSacCooldown,savedSacInfo
+trackingFail=true;HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_11,0,1,1),"old food API no longer queried")
+trackingFail=false;tracking={}
 for _,index in ipairs({14,15,18}) do assert(rgb(HijiAddon["texture_"..index],0,1,0) and HijiAddon["frame_"..index].shown,"item range evidence slots visible") end
 assert(HijiAddon.frame_13.shown and HijiAddon.holyThresholdBars[13].shown)
 assert(HijiAddon.holyThresholdBars[13].min==1 and HijiAddon.holyThresholdBars[13].max==2 and issecretvalue(HijiAddon.holyThresholdBars[13].value))
