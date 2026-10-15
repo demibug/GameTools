@@ -108,8 +108,8 @@ internal sealed class HOLY
         if(F(3)==true&&F(4)==false&&F(12)==true&&F(95)==true&&F(97)==true&&F(98)==true&&
             F(9)==true&&F(20)==true&&F(19)==true&&F(41) is not null&&
             P(6)>=t.HealBelow&&group.Reliable&&group.Unknown==0&&group.Injured==0&&!group.Major&&
-            F(92)==true)
-            return new(18,"全队存活成员均≥治疗线且5圣能：近战盾击防溢出（Shift+.）");
+            F(92)==true&&F(13)==true)
+            return new(18,"全队存活成员均≥治疗线、5圣能且震击至少2充能：近战盾击防溢出（Shift+.）");
         if(P(6)<=.40&&F(16)==true) return new(22,"治疗石：血量≤40%");
         if(P(6)<=.40&&F(17)==true) return new(23,"治疗药水：血量≤40%");
         // Divine Protection is off the GCD; target acknowledgement and an

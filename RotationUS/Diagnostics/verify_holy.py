@@ -38,11 +38,11 @@ end
 function IsInGroup() return true end
 function IsInRaid() return false end
 C_Spell.IsSpellInRange=function(id,unit)
-    assert(id~=96231 and id~=35395 and id~=53600,"Holy melee range must not query any skill")
+    assert(id~=96231 and id~=35395 and id~=53600,"Holy range must not depend on unavailable melee skills")
     return secret(ranges[unit] or false)
 end
 C_Item.IsItemInRange=function(id,unit)
-    assert(id==8149 or id==136605 or id==63427,"unexpected melee range item")
+    assert(id==168948 or id==194718 or id==8149,"unexpected melee range item")
     assert(unit=="target")
     return true
 end
@@ -129,10 +129,9 @@ assert(rgb(HijiAddon.texture_98,1,1,1) and HijiAddon.frame_98.shown)
 assert(rgb(HijiAddon.texture_96,1,1,1))
 assert(rgb(HijiAddon.texture_100,1,1,1) and HijiAddon.frame_95.shown and rgb(HijiAddon.texture_95,1,1,1))
 assert(HijiAddon.frame_41.shown and rgb(HijiAddon.texture_41,0,0,0),"shield tail fields do not overwrite raid mode")
--- Real collector matrix: a later true overrides an earlier false; secret,
--- nil, invalid and error results cannot authorize melee. Every item is logged.
+-- Both short probes must confirm; the broader 5-yard probe never authorizes melee.
 local savedItemRange=C_Item.IsItemInRange
-local probes={{14,8149},{15,136605},{18,63427}}
+local probes={{14,168948},{15,194718},{18,8149}}
 local cases={"in","out","nil","secret-in","secret-out","error","invalid"}
 local palette={['in']={0,1,0},['out']={1,0,0},['nil']={1,.5,0},
     ['secret-in']={.5,0,1},['secret-out']={.5,0,1},['error']={1,0,1},['invalid']={1,.5,0}}
@@ -150,11 +149,11 @@ C_Item.IsItemInRange=function(id,unit)
     return nil
 end
 for _,a in ipairs(cases) do for _,b in ipairs(cases) do for _,c in ipairs(cases) do
-    answers={[8149]=a,[136605]=b,[63427]=c};calls={}
+    answers={[168948]=a,[194718]=b,[8149]=c};calls={}
     HijiAddon.UpdateHoly()
-    local expected=(a=="in" or b=="in" or c=="in") and {1,1,1}
-        or (a=="out" or b=="out" or c=="out") and {0,0,0} or {1,.5,0}
-    assert(rgb(HijiAddon.texture_95,table.unpack(expected)),"item merged result: "..a..","..b..","..c)
+    local expected=(a=="out" or b=="out") and {0,0,0}
+        or (a=="in" and b=="in") and {1,1,1} or {1,.5,0}
+    assert(rgb(HijiAddon.texture_95,table.unpack(expected)),"short probe consensus: "..a..","..b..","..c)
     for _,entry in ipairs(probes) do
         assert(calls[entry[2]]==1,"each item must be queried exactly once")
         assert(rgb(HijiAddon["texture_"..entry[1]],table.unpack(palette[answers[entry[2]]])),"independent item status")
@@ -167,7 +166,7 @@ local function assertSkipped()
 end
 for _,case in ipairs({"friendly","secret","missing","error"}) do
     -- Start each gate case with positive enemy evidence to detect stale values.
-    UnitCanAttack=savedAttackable;answers={[8149]="in"};HijiAddon.UpdateHoly();calls={}
+    UnitCanAttack=savedAttackable;answers={[168948]="in",[194718]="in",[8149]="in"};HijiAddon.UpdateHoly();calls={}
     UnitCanAttack=function()
         if case=="friendly" then return false end
         if case=="secret" then return secret(true) end
@@ -182,12 +181,17 @@ UnitCanAttack=savedAttackable;calls={};dead.target=true
 HijiAddon.UpdateHoly();assertSkipped();assert(rgb(HijiAddon.texture_95,0,0,0))
 dead.target=false
 C_Item.IsItemInRange=nil;HijiAddon.UpdateHoly()
-assert(rgb(HijiAddon.texture_95,1,.5,0),"missing item API is unknown")
+assert(rgb(HijiAddon.texture_95,1,.5,0),"missing item API remains unknown")
 for _,entry in ipairs(probes) do assert(rgb(HijiAddon["texture_"..entry[1]],0,1,1),"missing API evidence") end
 C_Item.IsItemInRange=savedItemRange;C_SpellBook.IsSpellBookItemInRange=nil
--- Removing both melee skills does not affect item-based range at all.
+-- Holy has neither Rebuke nor Crusader Strike; range must still work.
 unknownSpells[96231]=true;unknownSpells[35395]=true
-HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_95,1,1,1))
+HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_95,1,1,1),"short item range works without melee skills")
+local savedSpellRange=C_Spell.IsSpellInRange
+C_Spell.IsSpellInRange=nil;HijiAddon.UpdateHoly()
+assert(rgb(HijiAddon.texture_95,1,1,1),"melee item range does not need spell API")
+C_Spell.IsSpellInRange=savedSpellRange
+HijiAddon.UpdateHoly()
 -- Reproduce the live restricted-speed failure: only a native StatusBar may
 -- receive the value. Its black fill hides white when moving, including tiny
 -- nonzero speed; no Lua comparison or color-curve evaluation is permitted.
@@ -299,4 +303,4 @@ assert(not HijiAddon.holyThresholdBars[13].shown,"two-charge bar cleared after s
 function UnitExists(unit) return unit=="player" end
 dead.player=true;HijiAddon.UpdateTeamHealth();assert(rgb(HijiAddon.texture_51,0,1,0),tostring(HijiAddon.texture_51.r)..","..tostring(HijiAddon.texture_51.g)..","..tostring(HijiAddon.texture_51.b))
 ''')
-print("PASS: Holy item-only five-yard range: 343 result combinations (true/false/nil/secret true/secret false/error/invalid), independent 8149/136605/63427 evidence, true overrides false, forbidden friendly/secret/missing/error/dead target queries, stale target evidence cleared, missing API, no melee skill or spellbook probes, range independent of Shield knowledge; existing item cooldown, food, learned healing range, native secret movement/resource/charges, cooldown recovery, manual Lay/Forbearance, proc and roster regressions preserved.")
+print("PASS: Holy short item range: 343 combinations, both short probes required, broad probe cannot authorize Shield, invalid/secret/error/missing results never grant range, target changes clear evidence, no Rebuke/Crusader Strike or spell API dependency; existing Holy regressions preserved.")

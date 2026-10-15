@@ -34,14 +34,17 @@ internal static class HolyTests
         }
         foreach(bool raid in new[]{false,true}) {
             ShieldSetup(raid);Want(18,"safe Shield has highest priority ahead of ready Judgment, raid="+raid);
-            foreach(int id in new[]{1,2,3,9,20,19,92,95,97,98}) {
+            foreach(int id in new[]{1,2,3,9,13,20,19,92,95,97,98}) {
                 foreach(var color in new[]{Color.Black,Color.Orange}) {
                     f[id]=color;Check(HOLY.Decide(f,buff).Key!=18,"Shield requires confirmed gate"+id+", raid="+raid);
                 }
                 F(id);
             }
-            // Shock charges no longer prevent spending capped Holy Power.
-            F(22);F(13,false);Want(18,"one Shock charge still permits safe capped Shield");F(13);
+            foreach(int charges in new[]{0,1,2}) {
+                F(22,charges>0);F(13,charges>=2);
+                Check((HOLY.Decide(f,buff).Key==18)==(charges>=2),"Shield requires two Shock charges, charges="+charges+", raid="+raid);
+            }
+            f.Remove(13);Check(HOLY.Decide(f,buff).Key!=18,"missing Shock charge observation forbids Shield");F(13);
             foreach(var color in new[]{Color.White,Color.Black,Color.Orange}) {
                 f[21]=color;Want(18,"Judgment cooldown no longer gates Shield, raid="+raid);
             }

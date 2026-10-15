@@ -83,7 +83,7 @@ internal sealed class HolyShieldLog
         }
         Gate(1,"战斗");Gate(2,"存活且未骑乘");Gate(3,"目标存活");Gate(4,"目标为敌对",false);
         Gate(12,"目标可攻击");Gate(95,"近战范围");Gate(97,"盾击已学就绪");Gate(98,"盾击可用");
-        Gate(9,"未施法");Gate(20,"GCD就绪");Gate(19,"有队伍");Gate(92,"5圣能");
+        Gate(9,"未施法");Gate(20,"GCD就绪");Gate(19,"有队伍");Gate(92,"5圣能");Gate(13,"神圣震击至少2充能");
         if(F(41) is null) blockers.Add("队伍类型[41]=未知");
         var group=HolyTriage.Analyze(values,F(41)==true,thresholds);
         if(!(P(6)>=thresholds.HealBelow)) blockers.Add("自身未达到治疗线或血量未知");
@@ -92,9 +92,9 @@ internal sealed class HolyShieldLog
         if(group.Injured>0) blockers.Add($"低于治疗线成员={group.Injured}");
         if(group.Major) blockers.Add("群体严重掉血");
         string gateSummary=live?(blockers.Count==0?"全部盾击条件满足":"盾击阻挡="+string.Join("、",blockers)):"采样无效，不能推断盾击阻挡原因";
-        var fields=new[]{1,2,3,4,9,12,19,20,41,92,95,97,98,96,100};
+        var fields=new[]{1,2,3,4,9,12,13,19,20,41,92,95,97,98,96,100};
         string raw=string.Join("；",fields.Select(id=>$"{id}={State(id)}({Raw(id)})"));
-        string probes=string.Join("；",HolyItemRange.Probes.Select(p=>$"5码物品{p.Item}[{p.Id}]="+
+        string probes=string.Join("；",HolyItemRange.Probes.Select(p=>$"{p.Range}码档物品{p.Item}[{p.Id}]="+
             (values.TryGetValue(p.Id,out var c)?HolyItemRange.Decode(c):"缺失")+$"({Raw(p.Id)})"));
         int count=F(41)==true?40:5;
         string members=string.Join(",",Enumerable.Range(1,count).Select(slot=>{
@@ -109,22 +109,27 @@ internal sealed class HolyShieldLog
         int checks=0;
         void Check(bool ok,string message) {if(!ok) throw new Exception("FAIL Shield log: "+message);checks++;}
         var values=Enumerable.Range(1,100).ToDictionary(i=>i,_=>Color.Black);
-        foreach(int id in new[]{1,2,3,9,12,19,20,92,95,96,97,98,100}) values[id]=Color.White;
+        foreach(int id in new[]{1,2,3,9,12,13,19,20,92,95,96,97,98,100}) values[id]=Color.White;
         values[6]=Color.White;
         for(int slot=1;slot<=5;slot++) values[50+slot]=Color.FromArgb(255,255,0);
         Check(Describe(values,new(),true).StartsWith("全部盾击条件满足"),"healthy enemy sample passes every existing shield gate");
+        values[13]=Color.Black;
+        Check(Describe(values,new(),true).Contains("神圣震击至少2充能[13]=否"),"insufficient Shock charges explain blocked Shield");
+        values[13]=Color.Orange;
+        Check(Describe(values,new(),true).Contains("神圣震击至少2充能[13]=未知"),"unknown Shock charges explain blocked Shield");
+        values[13]=Color.White;
         foreach(var (color,label) in new[]{(Color.Lime,"范围内"),(Color.Red,"范围外"),
             (Color.FromArgb(255,128,0),"nil或无效返回"),(Color.FromArgb(128,0,255),"秘密值"),
             (Color.Magenta,"查询报错"),(Color.Blue,"未查询"),(Color.Cyan,"物品距离接口缺失"),
             (Color.Black,"旧采集器或未显示")}) {
             values[14]=color;
-            Check(Describe(values,new(),true).Contains("5码物品8149[14]="+label),"item evidence persisted: "+label);
+            Check(Describe(values,new(),true).Contains("2码档物品168948[14]="+label),"item evidence persisted: "+label);
             var field=HolyBuffs.Fields().Single(f=>f.Id=="14");
             Check(HolyBuffs.Decode(new(),field,color).StartsWith(label),"UI and trace agree on item evidence: "+label);
         }
         values[14]=Color.Red;values[15]=Color.Lime;values[18]=Color.Magenta;
         string itemTrace=Describe(values,new(),true);
-        Check(itemTrace.Contains("5码物品8149[14]=范围外")&&itemTrace.Contains("5码物品136605[15]=范围内")&&itemTrace.Contains("5码物品63427[18]=查询报错"),"each probe keeps its own independent result");
+        Check(itemTrace.Contains("2码档物品168948[14]=范围外")&&itemTrace.Contains("2码档物品194718[15]=范围内")&&itemTrace.Contains("5码档物品8149[18]=查询报错"),"each probe keeps its own independent result");
         values[95]=Color.FromArgb(255,128,0);
         Check(Describe(values,new(),true).Contains("近战范围[95]=未知"),"actual unknown range is identified");
         Check(Describe(values,new(),true).Contains("95=未知(255,128,0)"),"source RGB is recorded");

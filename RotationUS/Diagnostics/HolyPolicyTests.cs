@@ -108,7 +108,8 @@ internal static class HolyPolicyTests
         Want(10,"two imminent deaths in a large raid may bypass population and overflow gates");
 
         Reset();Hp(8,1);Member(2,1);F(4,false);F(12);F(47,false);F(91);F(92);F(95);F(97);F(98);Skill(1);
-        Want(18,"safe capped Shield independent of Shock charges");
+        Want(0,"capped Holy Power waits without two Shock charges");
+        F(13);Want(18,"safe capped Shield with two Shock charges");
         F(97,false);Want(0,"no generator spam at cap when Shield unavailable");
         F(92,false);Want(7,"Judgment remains usable below cap");
 

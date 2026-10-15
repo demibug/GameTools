@@ -58,12 +58,12 @@ internal sealed class HolyBuffs
             result[20+i]=new((21+i).ToString(),spells[i]+"就绪",ValueKind.FuryBoolean);
             result[30+i]=new((31+i).ToString(),spells[i]+"可用",ValueKind.FuryBoolean);
         }
-        foreach(var (id,item) in HolyItemRange.Probes) result[id-1]=new(id.ToString(),$"5码物品{item}查询",ValueKind.Raw);
+        foreach(var (id,item,range) in HolyItemRange.Probes) result[id-1]=new(id.ToString(),$"{range}码档物品{item}查询",ValueKind.Raw);
         result[12]=new("13","神圣震击至少2充能",ValueKind.FuryBoolean);
         result[40]=new("41","团队模式",ValueKind.FuryBoolean);
         for(int i=1;i<=4;i++) result[40+i]=new((41+i).ToString(),"party"+i+"存活在线且治疗距离内",ValueKind.FuryBoolean);
         for(int i=1;i<=5;i++) result[44+i]=new((45+i).ToString(),"当前目标是"+(i==1?"自己":"party"+(i-1)),ValueKind.FuryBoolean);
-        string[] tail={"圣能至少3","圣能5","圣光灌注Buff（接口）","神性之手Buff（接口）","当前目标5码距离（物品查询）","神圣采集器已加载","盾击已学且就绪","盾击可用"};
+        string[] tail={"圣能至少3","圣能5","圣光灌注Buff（接口）","神性之手Buff（接口）","当前目标近战距离（双短距物品确认）","神圣采集器已加载","盾击已学且就绪","盾击可用"};
         for(int i=0;i<tail.Length;i++) result[90+i]=new((91+i).ToString(),tail[i],ValueKind.FuryBoolean);
         result[98]=new("99","当前目标审判距离内",ValueKind.FuryBoolean);
         result[99]=new("100","简化灌注采集器已加载",ValueKind.FuryBoolean);
@@ -81,10 +81,10 @@ internal sealed class HolyBuffs
 }
 
 // Dedicated diagnostic palette, mirrored by Classes/Holy.lua. Never used as
-// an action boolean; point 95 alone carries the merged three-state verdict.
+// an action boolean; point 95 carries the consensus of the two short-range item probes.
 internal static class HolyItemRange
 {
-    internal static readonly (int Id,int Item)[] Probes={(14,8149),(15,136605),(18,63427)};
+    internal static readonly (int Id,int Item,int Range)[] Probes={(14,168948,2),(15,194718,2),(18,8149,5)};
     internal static string Decode(Color c)=>(c.R,c.G,c.B) switch {
         (0,255,0)=>"范围内",
         (255,0,0)=>"范围外",
