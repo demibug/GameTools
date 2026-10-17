@@ -39,9 +39,29 @@ internal static class HolyPriorityTests
                 var buff=new HolyBuffs {Infusion=infusion,HandOfDivinity=hand,DivinePurpose=free};
                 keys.Add(Spell(HOLY.Decide(f,buff).Key));
             }
-            Check(keys[0]==keys[1],$"same spell for self/ally: raid={raid}, hp={hp}, power={power}, charges={charges}, infusion={infusion}, hand={hand}, free={free}");
-            if(!free&&power<5&&charges==2) Check(keys[0]==8,"two charges precede infused Flash and ordinary spenders");
-            if(!free&&power<5&&charges==1&&infusion) Check(keys[0]==11,"one charge follows infused Flash");
+            bool selfRescue=hp<.2&&(power>=3||free);
+            if(selfRescue) Check(keys[1]==9,"critical self spends available Holy Power before other direct healing");
+            else Check(keys[0]==keys[1],$"same spell for self/ally outside self-spender rescue: raid={raid}, hp={hp}, power={power}, charges={charges}, infusion={infusion}, hand={hand}, free={free}");
+            if(!free&&power<5&&charges==2) Check(keys[0]==8,"ally two charges precede infused Flash and ordinary spenders");
+            if(!free&&power<5&&charges==1&&infusion) Check(keys[0]==11,"ally one charge follows infused Flash");
+        }
+        foreach(bool raid in new[]{false,true}) {
+            var f=Frame(true,raid,.15);Skill(f,2);Skill(f,3);Skill(f,5);
+            f[13]=f[91]=Color.White;
+            var buff=new HolyBuffs {Infusion=true,DivinePurpose=false};
+            Check(HOLY.Decide(f,buff).Key==2,"self rescue spends three HP ahead of two-charge Shock and infused Flash");
+            foreach(int id in new[]{23,33}) {
+                foreach(var color in new[]{Color.Black,Color.Orange}) {
+                    f[id]=color;
+                    Check(HOLY.Decide(f,buff).Key==8,"unavailable or unknown self spender immediately falls back to Shock");
+                }
+                f[id]=Color.White;
+            }
+            f[91]=Color.Black;Check(HOLY.Decide(f,buff).Key==8,"insufficient power uses another immediate self heal");
+            f[91]=Color.Orange;Check(HOLY.Decide(f,buff).Key==8,"unknown power cannot authorize self spender");
+            buff.DivinePurpose=true;Check(HOLY.Decide(f,buff).Key==2,"confirmed free proc authorizes self spender with unknown power");
+            f[3]=f[4]=f[5]=f[46]=Color.Black;
+            Check(HOLY.Decide(f,buff).Key==2,"self spender macro needs no friendly target selection");
         }
         foreach(bool self in new[]{false,true}) {
             var f=Frame(self,false,.70);Skill(f,6);f[10]=Color.Black;

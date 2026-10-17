@@ -147,6 +147,25 @@ sacInfo=nil;HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_11,1,.5,0),"nil 
 sacMode="ready";unknownSpells[6940]=true;HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_11,1,.5,0),"unlearned Sacrifice unknown rather than a cooldown transition")
 unknownSpells[6940]=nil
 C_Spell.GetSpellCooldownDuration,C_Spell.GetSpellCooldown=savedSacCooldown,savedSacInfo
+-- Synthetic replacement verifies Word of Glory's dynamic spell family without
+-- hardcoding an Eternal Flame ID. Only the replacement's current state counts.
+local replacement=9000001
+overrides[85673]=replacement;unknownSpells[85673]=true
+cooldowns[85673]=60;unusable[85673]=true
+HijiAddon.UpdateHoly()
+assert(rgb(HijiAddon.texture_23,1,1,1) and rgb(HijiAddon.texture_33,1,1,1),"known replacement remains ready/usable when base spell is unavailable")
+cooldowns[replacement]=10;HijiAddon.UpdateHoly()
+assert(rgb(HijiAddon.texture_23,0,0,0),"replacement cooldown controls spender readiness")
+cooldowns[replacement]=nil;unusable[replacement]=true;HijiAddon.UpdateHoly()
+assert(rgb(HijiAddon.texture_23,1,1,1) and rgb(HijiAddon.texture_33,0,0,0),"replacement usability controls spender permission")
+unknownSpells[replacement]=true;HijiAddon.UpdateHoly()
+assert(rgb(HijiAddon.texture_23,0,0,0) and rgb(HijiAddon.texture_33,0,0,0),"unlearned base and replacement disable spender")
+overrides[85673]=secret(replacement);HijiAddon.UpdateHoly()
+assert(rgb(HijiAddon.texture_23,1,.5,0) and rgb(HijiAddon.texture_33,1,.5,0),"unknown replacement cannot reuse stale ready state")
+overrides[85673]=nil;unknownSpells[85673]=nil;unknownSpells[replacement]=nil
+cooldowns[85673]=nil;unusable[85673]=nil;unusable[replacement]=nil
+HijiAddon.UpdateHoly()
+assert(rgb(HijiAddon.texture_23,1,1,1) and rgb(HijiAddon.texture_33,1,1,1),"returning to base talent restores base spell sampling")
 trackingFail=true;HijiAddon.UpdateHoly();assert(rgb(HijiAddon.texture_11,0,1,1),"old food API no longer queried")
 trackingFail=false;tracking={}
 for _,index in ipairs({14,15,18}) do assert(rgb(HijiAddon["texture_"..index],0,1,0) and HijiAddon["frame_"..index].shown,"item range evidence slots visible") end

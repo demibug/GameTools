@@ -52,10 +52,10 @@ internal sealed class CJQ
         if((B(20)&B(25)&B(26)&F(4))==true) return Result(3,"自身血量<60%：圣佑术（9）");
         if((B(19)&F(4)&F(16))==true) {
             bool? flash=B(23)&B(24)&B(27);
-            if(flash==true) return Result(2,"自身血量<80%：瞬发圣光闪现（8）");
+            if(flash==true) return Result(1,"自身血量<80%：瞬发圣光闪现（7）");
             if(flash is null) return Result(0,"等待圣光闪现可用/瞬发来源，不读条");
             bool? glory=B(21)&B(22);
-            if(glory==true) return Result(1,"瞬发闪现不可用且血量<80%：荣耀圣令（7）");
+            if(glory==true) return Result(2,"瞬发闪现不可用且血量<80%：荣耀圣令（8）");
             if(glory is null) return Result(0,"等待自身荣耀圣令可用状态");
         }
         if(state.Stage==RetStage.Clear) return Result(F(10)==true?28:0,"清理已完成/已取消的军官请求");
@@ -80,10 +80,10 @@ internal sealed class CJQ
             if(now-state.Started>8) return Cancel("爆发请求超过8秒未完成，取消请求");
             if(state.Sent&&now-state.SentAt>2) return Cancel("发键后2秒未确认技能进入自身冷却，取消请求");
             if(state.Stage==RetStage.Prepare) {
-                if(B(10) is null) return Result(0,"等待Holy Flames天赋来源");
+                if(B(10) is null) return Result(0,"等待神圣烈焰天赋来源");
                 if(B(10)==true&&buff.Expurgation.Present!=true) {
-                    if(buff.Expurgation.Present is null) return Result(0,"等待当前目标灼烧取色");
-                    return Result((F(4)&F(16)&Skill(7))==true?14:0,"爆发前公正之剑建立灼烧");
+                    if(buff.Expurgation.Present is null) return Result(0,"等待当前目标异端逐除取色");
+                    return Result((F(4)&F(16)&Skill(7))==true?14:0,"爆发前公正之剑建立异端逐除");
                 }
                 state=state with {Stage=RetStage.Wings};
             }
@@ -106,19 +106,21 @@ internal sealed class CJQ
         if(F(5) is null) return Result(0,"等待附近敌人数");
         // Native override shape plus fixed free-proc source; never infer a proc from a key press.
         bool? free=B(17)==false?false:buff.FreeHammer.Present;
-        bool? hammer=Skill(2);
+        // Wake and Hammer share the native Wake button (action 12, period).
+        // A Hammer candidate requires that this button is actually overridden.
+        bool? hammer=Skill(2)&B(6);
         bool? normal=hammer&B(6)&!B(7)&!free;
-        if(normal==true) return Result(10,"灰烬后的常规圣光之锤");
+        if(normal==true) return Result(12,"灰烬后的常规圣光之锤");
         if(normal is null) return Result(0,"等待圣光之锤形态/免费触发");
         bool? freeUse=hammer&free&(buff.FreeHammer.Expiring|
             (buff.Wings.Present&buff.Wings.Expiring)|(buff.Sentence.Present&buff.Sentence.Expiring)|
             (!buff.Ruling.Present & (F(10)==false?true:F(49))));
-        if(freeUse==true) return Result(10,"免费圣光之锤：临期/爆发末尾/无统治增益");
-        if(freeUse is null) return Result(0,"等待免费锤/爆发临期/统治取色");
+        if(freeUse==true) return Result(12,"免费圣光之锤：临期/爆发末尾/无公允裁定增益");
+        if(freeUse is null) return Result(0,"等待免费锤/爆发临期/公允裁定取色");
         bool? legacy=B(15)==false?false:buff.Legacy.Present;
         int spender=F(5)==true?legacy==true?3:4:3;
         bool? spend=F(5)==true&&legacy is null?null:Skill(spender);
-        string spendName=spender==3?"最终审判"+(F(5)==true?"：天穹之遗":""):"神圣风暴";
+        string spendName=spender==3?"最终审判"+(F(5)==true?"：苍穹之遗":""):"神圣风暴";
         if(F(9)!=true) return Result(0,"等待神圣能量来源");
         bool? cap=F(8)&spend;
         if(cap==true) return Result(spender==3?11:9,"满圣能："+spendName);
@@ -127,7 +129,7 @@ internal sealed class CJQ
             (Skill(5)&!B(6),12,"灰烬觉醒：自动"), (Skill(6),13,"圣洁鸣钟：自动"),
             (Skill(7)&(B(18)==false?false:buff.Art.Expiring),14,"公正之剑：战争艺术两层"),
             (spend,spender==3?11:9,spendName), (Skill(7),14,"公正之剑"),
-            (Skill(8),16,F(17)==true?"愤怒之锤（审判替换）":"审判技能族") };
+            (Skill(8),10,F(17)==true?"愤怒之锤（审判替换）":"审判技能族") };
         foreach(var rule in rules) {
             if(rule.Condition==true) return Result(rule.Key,rule.Reason);
             if(rule.Condition is null) return Result(0,"等待状态："+rule.Reason);

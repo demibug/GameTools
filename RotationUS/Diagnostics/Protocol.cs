@@ -89,13 +89,15 @@ internal sealed class DiagnosticLayout
             throw new InvalidDataException("布局格式不正确，请重新校准。");
         _ = MarkerLayouts.Offset(MarkerLayout);
         if (SpecialPoints is null || ThunderMode is not ("presence-only" or "exact-stacks")) throw new InvalidDataException("特殊点配置格式不正确。");
-        foreach (var setting in SpecialPoints.Values)
+        foreach (var (key,setting) in SpecialPoints)
         {
             if (setting is null || setting.Point is null || setting.Comparison is not ("presence" or "expiring")) throw new InvalidDataException("特殊点判断类型不正确。");
             if (setting.Comparison=="expiring" && setting.ReferenceColor == new SampleColor(0, 0, 0)) throw new InvalidDataException("临近结束参考色必须非黑。");
             if (setting.Enabled && setting.Comparison == "expiring" && setting.ReferenceColor is null) throw new InvalidDataException("请先采集临近结束参考色。");
             if(setting.Enabled&&setting.HandExpiryMode&&(setting.ReferenceColor is null||setting.ReferenceColor==new SampleColor(0,0,0)))
                 throw new InvalidDataException("神性之手临期模式需要非黑参考色。");
+            if(setting.Enabled&&key=="holy_purpose"&&(setting.ReferenceColor is null||setting.ReferenceColor==new SampleColor(0,0,0)))
+                throw new InvalidDataException("神圣意志临期模式需要非黑临期参考色。");
         }
         foreach (var p in Frames.Concat(Bars).Concat(Markers).Concat(SpecialEnabled ? new[] { Special } : Array.Empty<SamplePoint>()).Concat(SpecialPoints.Values.Where(s => s.Enabled).Select(s => s.Point)))
             if (p is null || p.X < 0 || p.Y < 0 || p.X >= ClientWidth || p.Y >= ClientHeight)

@@ -7,9 +7,9 @@ internal sealed class RetBuffs
 {
     internal BuffObservation Art, Legacy, FreeHammer, Ruling, Wings, Sentence, Expurgation;
     internal static readonly (string Key,string Label)[] Points = {
-        ("ret_art","战争艺术两层"),("ret_legacy","天穹之遗"),("ret_free","免费圣光之锤（≤3秒色）"),
-        ("ret_ruling","无可争议的统治"),("ret_wings","复仇之怒（≤3秒色）"),
-        ("ret_sentence","当前目标处决（≤3秒色）"),("ret_expurgation","当前目标灼烧") };
+        ("ret_art","战争艺术两层"),("ret_legacy","苍穹之遗"),("ret_free","圣光裁决（免费大锤）"),
+        ("ret_ruling","公允裁定"),("ret_wings","复仇之怒（≤3秒色）"),
+        ("ret_sentence","处决宣判（目标，≤3秒色）"),("ret_expurgation","当前目标异端逐除") };
     internal static bool UsesColor(string key)=>key is "ret_art" or "ret_free" or "ret_wings" or "ret_sentence";
     internal static string Label(string key)=>Points.First(p=>p.Key==key).Label;
     internal static string Rule(string key)=>key=="ret_art"?"黑=无；指定色=两层":UsesColor(key)?"黑=无；指定色=≤3秒":"黑=无；非黑=有";
@@ -58,8 +58,8 @@ internal sealed class RetBuffs
         result[49]=new("50","惩戒本轮发布有效",ValueKind.FuryBoolean);
         result.AddRange(Enumerable.Range(51,50).Select(DisplayProtocol.CommonField));
         for(int i=1;i<=5;i++) result.Add(new("B"+i,"神圣能量≥"+i,ValueKind.FuryBoolean,true));
-        string[] flags={"灰烬已替换为锤","圣光之锤实际为免费形态","翅膀已学","处决已学","Holy Flames已学","光辉荣耀已学（当前不支持）",
-            "圣殿英雄已学","自动十字军打击已学","当前目标版本","天穹之遗已学","处决自身冷却中","圣光救赎已学","战争艺术已学",
+        string[] flags={"灰烬已替换为锤","圣光之锤实际为免费形态","翅膀已学","处决已学","神圣烈焰已学","光辉荣耀已学（当前不支持）",
+            "圣殿英雄已学","自动十字军打击已学","当前目标版本","苍穹之遗已学","处决自身冷却中","圣光裁决已学","战争艺术已学",
             "自身血量<80%","自身血量<60%","荣耀圣令自身就绪","荣耀圣令可用","圣光闪现自身就绪","圣光闪现可用",
             "圣佑术技能族自身就绪","圣佑术技能族可用","圣光闪现当前施法时间为零"};
         for(int i=0;i<flags.Length;i++) result.Add(new("B"+(i+6),flags[i],i==8?ValueKind.Raw:ValueKind.FuryBoolean,true));

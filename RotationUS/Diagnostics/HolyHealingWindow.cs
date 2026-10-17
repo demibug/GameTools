@@ -5,9 +5,9 @@ namespace RotationUS.Diagnostics;
 
 internal sealed record PartyTollReading(bool Valid,int Eligible=0,int Injured=0,int Severe=0,int Urgent=0,double Deficit=0)
 {
-    internal bool Ordinary=>Valid&&Injured>=2&&Deficit+1e-9>=.40;
-    internal bool Emergency=>Valid&&Urgent>=2;
-    internal bool Immediate=>Valid&&Severe>=2;
+    internal bool Ordinary=>Valid&&Injured>=HolyTriage.MinimumGroupMembers&&Deficit+1e-9>=.40;
+    internal bool Emergency=>Valid&&Urgent>=HolyTriage.MinimumGroupMembers;
+    internal bool Immediate=>Valid&&Severe>=HolyTriage.MinimumGroupMembers;
     internal static PartyTollReading Read(Dictionary<int,Color> frames,HealingThresholds t)
     {
         bool? F(int id)=>frames.TryGetValue(id,out var c)?FuryBuffs.Boolean(c):null;
@@ -85,7 +85,7 @@ internal sealed class HolyHealingDiagnosticLog
     {
         bool? F(int id)=>frames.TryGetValue(id,out var c)?FuryBuffs.Boolean(c):null;
         var r=sample.Toll;
-        string reason=!r.Valid?"小队有效伤情不足／非小队，沿用普通治疗":r.Emergency?"至少2人危急，允许圣能溢出":r.Immediate?"至少2人大掉血":
+        string reason=!r.Valid?"小队有效伤情不足／非小队，沿用普通治疗":r.Emergency?"至少3人危急，允许圣能溢出":r.Immediate?"至少3人大掉血":
             !r.Ordinary?"人数或总缺血不足，普通治疗":!sample.TollConfirmed?"普通群伤：等待第二次有效采样":"普通群伤：连续两次确认";
         bool eligible=r.Emergency||r.Immediate||(r.Ordinary&&sample.TollConfirmed);
         string gate=!eligible?"未触发":F(24)!=true||F(34)!=true?"鸣钟冷却／不可用／未知":
@@ -97,7 +97,8 @@ internal sealed class HolyHealingDiagnosticLog
         var entries=new[] {
             ("toll",reason+gate+executing,$"[小队鸣钟] {reason}；{gate}；可治疗={r.Eligible}，低于{t.HealBelow:P0}={r.Injured}，低于{t.TollCritical:P0}={r.Severe}，危急={r.Urgent}，伤员总缺血={r.Deficit*100:F1}个百分点；执行={(executing?"开":"关（仅诊断）")}"),
             ("virtue",sample.VirtueState+sample.VirtueSequence,$"[小队美德] {sample.VirtueState}；剩余={sample.VirtueRemaining:F1}秒；仅冷却推定，不代表道标归属"),
-            ("hand",handState,"[神性之手] "+handState)
+            ("hand",handState,"[神性之手] "+handState),
+            ("purpose",buff.PurposeState,"[神圣意志] "+buff.PurposeState)
         };
         var changes=new List<PartyLogChange>();
         foreach(var (key,state,text) in entries) {

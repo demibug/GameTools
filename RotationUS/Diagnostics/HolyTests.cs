@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Windows.Forms;
@@ -209,7 +209,8 @@ internal static class HolyTests
             Check(HOLY.Decide(f,buff,automatic,new(Healing:new(new PartyTollReading(true),TollConfirmed:true))).Key==(raid?10:4),
                 "confirmed party group injury or raid threshold spends mode-specific Toll");
             Member(4,1);Want(8,"two below70 do not meet major group threshold");
-            Hp(8,.40);Member(2,.40);Member(3,.40);Want(raid?10:4,"two below50 permit group Toll");
+            Hp(8,.40);Member(2,.40);Member(3,.40);Want(8,"two below50 do not permit group Toll");
+            Member(4,.40);Want(raid?10:4,"three below50 permit group Toll");
             F(19,false);Want(8,"stale major group health without a group cannot spend Toll");F(19);
             f[54]=f[55]=Color.Orange;Want(8,"unreliable group health cannot spend Toll");Member(4,1);Member(5,1);
             F(24,false);Want(8,"group Toll on cooldown falls through to Shock");F(24);F(34,false);Want(8,"unusable group Toll falls through to Shock");
@@ -253,7 +254,8 @@ internal static class HolyTests
         Reset();Hp(8,.87);Member(2,.87);Member(3,.87);Want(0,"party members above85 do not trigger selection or ordinary aoe");
         Check(!HolyTriage.Analyze(f,false,new()).Aoe,"ordinary party aoe uses85 injury threshold");
         Member(3,.84);Want(103,"party member below85 is selected while87 target is ignored");
-        Member(2,.84);Check(HolyTriage.Analyze(f,false,new()).Aoe,"two below85 still trigger ordinary party aoe");
+        Member(2,.84);Check(!HolyTriage.Analyze(f,false,new()).Aoe,"two below85 do not trigger ordinary party aoe");
+        Member(4,.84);Check(HolyTriage.Analyze(f,false,new()).Aoe,"three below85 trigger ordinary party aoe");
         Reset();Skill(2);Check(HOLY.Decide(f,buff,new(HealBelow:.65)).Key==0,"Shock uses configured healing threshold instead of hardcoded85");
         F(5,false);Want(0,"Shock needs target healing range");Check(HOLY.Decide(f,buff).Reason.Contains("点5"),"out of range is not misreported as topped target");
         f[4]=Color.Orange;Want(0,"Shock waits for confirmed friendly target");
@@ -316,7 +318,8 @@ internal static class HolyTests
         F(29,false);F(97);Want(4,"party toll uses 0 self macro no target change",confirmedGroup);
         F(97,false);Want(4,"Virtue cooldown prevents repeat cast without a healing window",confirmedGroup);
         F(41);Want(10,"raid toll uses semicolon on current target");F(41,false);
-        F(92);Skill(3);Want(9,"5 hp before toll");F(92,false);Skill(4,false);Skill(7);Want(13,"no infusion -> wings");
+        F(92);Skill(3);Want(9,"5 hp before toll");F(92,false);Skill(4,false);Skill(7);
+        Member(2,.55);Member(3,.55);Member(4,.55);Hp(8,.55);Want(13,"three below60 -> wings");
         buff.Infusion=true;Skill(5);Want(13,"infusion does not indefinitely postpone needed wings");
         F(95);Want(13,"old unused layer point is ignored");F(95,false);
         buff.Infusion=false;
@@ -332,7 +335,8 @@ internal static class HolyTests
         Member(2,.6);Member(3,.6);Hp(8,.6);
         Want(8,"ordinary group aoe with two below70 never opens major group cooldowns");
         Member(2,.4);Member(3,.4);Hp(8,.4);
-        Want(13,"two below50 confirms major aoe and permits wings without infusion");
+        Want(8,"two below50 do not permit group wings");
+        Member(4,.4);Want(13,"three below50 confirm major aoe and permit wings without infusion");
         foreach(var color in new[]{Color.White,Color.Black,Color.Orange}) {
             f[98]=color;Want(13,"removed wings aura does not affect ready group cooldown");
         }
@@ -403,7 +407,7 @@ internal static class HolyTests
         F(93,false);Want(12,"native absent infusion and actual Hand buff choose Holy Light");
         F(94,false);Want(0,"native absent Hand overrides fixed point presence");
         Reset(true);Hp(8,.55);Member(2,.55);buff.HandOfDivinity=true;Skill(6);F(10,false);Member(3,.2);Want(12,"raid Hand heals selected target without switching to lowest member");
-        Reset();Member(2,.6);Member(3,.6);Member(4,.6);Hp(8,.6);Skill(6);Skill(7);Skill(8);F(10,false);
+        Reset();Member(2,.55);Member(3,.55);Member(4,.55);Hp(8,.55);Skill(6);Skill(7);Skill(8);F(10,false);
         buff.HandOfDivinity=true;Want(13,"major pressure can activate wings even with a Hand proc");
         buff.HandOfDivinity=false;Want(13,"no infusion and no Hand uses ready wings");
         // Sending wings does not prove it granted instant casts.
@@ -411,7 +415,8 @@ internal static class HolyTests
         buff.HandOfDivinity=true;Skill(8,false);Hp(8,.55);Member(2,.55);Want(12,"actual Hand acquisition and major injury after wings enable Holy Light");
         Reset();Member(2,.6);Member(3,.6);Member(4,.6);var t=new HealingThresholds();Check(HolyTriage.Analyze(f,false,t).Major,"party 3 below70 major");
         Check(HolyTriage.Single(.19,t)=="单体危急"&&HolyTriage.Single(.4,t)=="单体大掉血"&&HolyTriage.Single(.8,t)=="单体普通掉血"&&HolyTriage.Single(.95,t)=="轻微掉血，无需治疗","four single target classifications");
-        Member(4,1);Check(!HolyTriage.Analyze(f,false,t).Major,"2 below70 not major");Member(2,.4);Member(3,.4);Check(HolyTriage.Analyze(f,false,t).Major,"2 below50 major");
+        Member(4,1);Check(!HolyTriage.Analyze(f,false,t).Major,"2 below70 not major");Member(2,.4);Member(3,.4);Check(!HolyTriage.Analyze(f,false,t).Major,"2 below50 not major");
+        Member(4,.4);Check(HolyTriage.Analyze(f,false,t).Major,"3 below50 major");
         Reset(true);for(int i=1;i<=40;i++) Member(i,1);Member(1,.4);Member(2,.4);Check(!HolyTriage.Analyze(f,true,t).Major,"2 low of40 not raid major");
         for(int i=1;i<=12;i++) Member(i,.6);Check(HolyTriage.Analyze(f,true,t).Major,"30 percent of40 below70");
         for(int i=1;i<=40;i++) Member(i,1);for(int i=1;i<=8;i++) Member(i,.4);Check(HolyTriage.Analyze(f,true,t).Major,"20 percent of40 below50");
@@ -439,7 +444,7 @@ internal static class HolyTests
             layout.SpecialPoints[p.Key]=new(){Enabled=true,Point=new(540,8),ReferenceColor=new(255,255,255),Comparison="expiring"};
             Check(HolyBuffs.Observe(layout,p.Key,_=>Color.Black)==false,"absent "+p.Key);
             Check(HolyBuffs.Observe(layout,p.Key,_=>Color.White)==true,"present "+p.Key);
-            Check(HolyBuffs.Observe(layout,p.Key,_=>Color.Orange) is null,"unknown color "+p.Key);
+            Check(p.Key=="holy_purpose"?HolyBuffs.Observe(layout,p.Key,_=>Color.Orange)==true:HolyBuffs.Observe(layout,p.Key,_=>Color.Orange) is null,"default color interpretation "+p.Key);
         }
         Check(ClassProfiles.Find(65)?.ClassId==2,"profile identity");
         Check(HolyBuffs.Fields().Where(field=>int.Parse(field.Id)>100).Select(field=>field.Id).SequenceEqual(new[]{"101","104","105"}),"remaining external point IDs remain stable after removing102 and103");
@@ -472,6 +477,14 @@ internal static class HolyTests
             var saved=settings.BuildLayout(layout,"holy_i1");settings.LoadSettings(saved,"holy_i1");
             Check(settings.Rows["holy_hand"].Pending is not null,"saving one row preserves Hand row pending");
             Check(saved.SpecialPoints["holy_i1"].ReferenceColor==new SampleColor(50,60,70),"reference saves correctly");
+            settings.Stage("holy_purpose",new(new(580,8),new(255,255,255)));
+            settings.LoadSettings(saved,"holy_i1");
+            Check(settings.Rows["holy_purpose"].Pending is not null,"saving another row preserves pending Purpose reference");
+            var purposeSaved=settings.BuildLayout(saved,"holy_purpose");profiles.Save(profile,purposeSaved);
+            var purposeLoaded=profiles.Load(profile,saved);
+            Check(HolyBuffs.Read(purposeLoaded,_=>Color.White).PurposeExpiringConfirmed,"Purpose expiry is automatic after profile save and reload");
+            settings.LoadSettings(purposeLoaded,"holy_purpose");
+            Check(settings.Rows["holy_purpose"].Rule.Text.Contains("指定色=临期"),"Purpose row always shows expiry rule");
             bool rejected=false;try { (t with{Major=.95}).Validate(); }catch(InvalidDataException) {rejected=true;}
             Check(rejected,"invalid threshold order rejected");
         } finally {
@@ -516,6 +529,14 @@ internal static class HolyTests
         raidMastery.Checked=true;
         if(!DiagnosticLayout.Load(profiles.PathFor(ClassProfiles.Find(65)!)).HolyThresholds.RaidAutoAuraMastery)
             throw new Exception("Re-enabling raid automatic Mastery must persist");
+        var purposeRow=settings.Rows["holy_purpose"];
+        settings.Stage("holy_purpose",new(new(588,8),new(255,255,255)));
+        // SaveSpecial's click handler checks a live game's size and identity;
+        // synthetic UI tests exercise its persistence path without querying a game.
+        form.SaveSpecialLayout(settings.BuildLayout(DiagnosticLayout.Load(profiles.PathFor(ClassProfiles.Find(65)!)),"holy_purpose"),"holy_purpose");
+        Application.DoEvents();
+        if(!HolyBuffs.Read(DiagnosticLayout.Load(profiles.PathFor(ClassProfiles.Find(65)!)),_=>Color.White).PurposeExpiringConfirmed)
+            throw new Exception("Purpose expiry mode must persist and reload through the form save path");
         foreach(var size in new[]{new Size(1180,800),new Size(950,650)}) {
             form.ClientSize=size;form.Refresh();Application.DoEvents();
             var switchParent=raidMastery.Parent??throw new Exception("Raid Mastery switch has no parent");
@@ -523,6 +544,7 @@ internal static class HolyTests
                 throw new Exception($"Raid automatic Mastery switch clipped: size={size}, visible={raidMastery.Visible}, enabled={raidMastery.Enabled}, bounds={raidMastery.Bounds}, parent={switchParent.ClientSize}");
             foreach(var row in settings.Rows.Values)
                 if(!row.Pick.Visible||!row.Disable.Enabled||row.Save.Right>row.Save.Parent!.ClientSize.Width||row.Pick.Bottom>row.Pick.Parent!.ClientSize.Height) throw new Exception("Holy settings clipped");
+            if(All(settings).OfType<CheckBox>().Any()) throw new Exception("Holy buff settings must not contain an expiry mode switch");
         }
         form.ClientSize=new Size(1180,800);Application.DoEvents();
         using var image=new Bitmap(form.Width,form.Height);form.DrawToBitmap(image,new Rectangle(Point.Empty,image.Size));image.Save(path,ImageFormat.Png);

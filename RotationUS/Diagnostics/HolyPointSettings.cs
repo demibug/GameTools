@@ -67,7 +67,7 @@ internal sealed class HolyPointSettings : UserControl
                 row.X.Value=Math.Min(row.X.Maximum,setting?.Point.X??530);
                 row.Y.Value=Math.Min(row.Y.Maximum,setting?.Point.Y??8);
                 row.Color.Text=setting?.ReferenceColor?.ToString()??"未取色";
-                row.Rule.Text=HolyBuffs.Rule(definition.Key,setting?.HandExpiryMode==true);
+                row.Rule.Text=HolyBuffs.Rule(definition.Key,HolyBuffs.ExpiryMode(definition.Key,setting));
                 row.Pick.Enabled=layout is not null;row.Disable.Enabled=setting?.Enabled==true;
             }
         }

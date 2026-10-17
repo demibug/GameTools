@@ -125,19 +125,16 @@ internal sealed class HOLY
         if(F(3)==true&&F(4)==false&&F(12)==true&&F(95)==true&&F(97)==true&&F(98)==true&&
             F(9)==true&&F(20)==true&&F(19)==true&&F(41) is not null&&
             P(6)>=t.HealBelow&&group.Reliable&&group.Unknown==0&&group.Injured==0&&!group.Major&&
-            F(92)==true&&F(13)==true)
-            return new(18,"全队存活成员均≥治疗线、5圣能且震击至少2充能：近战盾击防溢出（Shift+.）");
+            ((F(92)==true&&F(13)==true)||buff.PurposeExpiringConfirmed))
+            return new(18,buff.PurposeExpiringConfirmed?
+                "神圣意志临期且全队安全：忽略圣能与震击充能，近战盾击消耗免费触发（Shift+.）":
+                "全队存活成员均≥治疗线、5圣能且震击至少2充能：近战盾击防溢出（Shift+.）");
         // Divine Protection is off the GCD; target acknowledgement and an
         // active healing cast must not postpone this self defensive.
         if(P(6)<.60&&Skill(10)&&!(F(19)==true&&F(41) is not null&&context.Sacrifice?.Holding==true)) return new(5,"自身低于60%：圣佑术（-）");
         if(F(9)!=true||F(20)!=true) return new(0,"等待玩家施法结束或GCD");
-        bool emergency=raid?F(19)==true&&group.Reliable&&group.Urgent>=2:partyToll.Emergency;
+        bool emergency=raid?F(19)==true&&group.Reliable&&group.Urgent>=HolyTriage.MinimumGroupMembers:partyToll.Emergency;
         bool mastery=t.AutoAuraMastery&&t.AuraMasteryHasToll&&(!raid||t.RaidAutoAuraMastery)&&Skill(8)&&context.Allows(14,emergency);
-        // Aura Mastery is a self cooldown. After Toll becomes unavailable,
-        // multiple imminent deaths must not be perpetually preempted by one
-        // target's direct heal, Holy Power spending or target acknowledgement.
-        if(emergency&&mastery&&!Skill(4))
-            return new(14,"多人危急且鸣钟不可用：紧急追加光环掌握（允许圣能溢出）",true);
         bool selfNeed=P(6) is >0&&P(6)<t.HealBelow;
         bool selfCritical=selfNeed&&P(6)<t.Critical;
         bool healing=F(3)==true&&F(4)==true&&F(5)==true;
@@ -166,9 +163,43 @@ internal sealed class HOLY
         bool hardLight=infusion==false&&F(22)==false&&F(10)==true&&P(7)>=t.HolyLightMana&&Skill(6);
         bool capped=F(92)==true;
         bool canSpend=F(91)==true||capped||buff.DivinePurpose==true;
+        bool aoe=F(19)==true&&group.Aoe;
+        bool big=F(19)==true&&group.Major;
+        bool critical=need&&P(8)<t.Critical;
+        bool HandFor(double? hp)=>hp is >0&&hp<t.HealBelow&&hand==true&&Skill(6)&&
+            (hp<t.Major||buff.HandExpiring==true||virtueWindow);
+        bool instant=(canSpend&&Skill(3))||Skill(2)||(infusion==true&&Skill(5));
+        bool CanFollow(double? hp)=>hp is >0&&hp<t.HealBelow&&
+            (instant||HandFor(hp)||(F(10)==true&&(Skill(5)||(hp<t.Major&&hardLight))));
+        bool urgentRecipient=selfCritical||critical||(!raid&&best>0&&bestHp<t.Critical);
+        bool reselectCurrent=!raid&&pendingSelection>0&&best>0&&best!=pendingSelection&&F(45+best)==true;
+        // Virtue's recipient and the following direct-heal recipient may differ.
+        // Three critical members also authorize setup in a large raid, matching
+        // the existing emergency population exception for Toll/Mastery.
+        bool virtueFollowup=CanFollow(P(6))||(healing&&CanFollow(P(8)))||(!raid&&best>0&&CanFollow(bestHp));
+        HolyDecision? VirtueSetup(bool allowSelection)
+        {
+            if(!(aoe||emergency)||virtueWindow||!virtueFollowup||!Skill(9)||!context.Allows(15)) return null;
+            if((F(46)==true||healing)&&!reselectCurrent)
+                return new(15,urgentRecipient||emergency?"群体危急：优先美德铺垫，随后立即抢救":"群体掉血：优先美德铺垫，随后直接治疗");
+            if(allowSelection&&!raid&&best>0&&CanFollow(bestHp)&&F(45+best)!=true)
+                return new(100+best,"为美德选择治疗目标："+(best==1?"自己":"party"+(best-1)));
+            return null;
+        }
+        // A usable Virtue opens group rescue too. Without a confirmed recipient
+        // or executable follow-up, continue rescue immediately instead of
+        // switching targets or waiting merely to prepare Virtue.
+        if((urgentRecipient||emergency)&&VirtueSetup(false) is { } urgentVirtue) return urgentVirtue;
+        // Mastery is a self cooldown; unavailable Virtue and Toll must not let
+        // direct-heal or target-acknowledgement loops starve emergency Mastery.
+        if(emergency&&mastery&&!Skill(4))
+            return new(14,"多人危急且鸣钟不可用：紧急追加光环掌握（允许圣能溢出）",true);
         HolyDecision? Rescue(bool self)
         {
             int Glory=self?2:9,Flash=self?1:11,Light=self?3:12;
+            // Group Virtue and emergency cooldowns retain their earlier priority.
+            // Once direct self rescue is selected, spend usable Holy Power first.
+            if(self&&canSpend&&Skill(3)) return new(Glory,"自身危急：优先荣耀圣令／永恒之火",true);
             if((capped||buff.DivinePurpose==true)&&canSpend&&Skill(3)) return new(Glory,"危急抢救：优先满圣能／免费荣耀圣令",true);
             if(F(13)==true&&Skill(2)&&(!self||(healing&&F(46)==true))) return new(8,"危急抢救：两充能神圣震击",true);
             if(infusion==true&&Skill(5)) return new(Flash,"危急抢救：立即灌注圣光闪现",true);
@@ -178,7 +209,6 @@ internal sealed class HOLY
             return null;
         }
         int tollKey=raid?10:4;
-        bool reselectCurrent=!raid&&pendingSelection>0&&best>0&&best!=pendingSelection&&F(45+best)==true;
         if(emergency&&healing&&Skill(4)&&context.Allows(tollKey,true)&&!reselectCurrent)
             return new(tollKey,"多人危急：立即鸣钟，允许圣能溢出",true);
         if(selfCritical&&selfPriority&&Rescue(true) is { } selfRescue && (selfRescue.Key!=8||!reselectCurrent)) return selfRescue;
@@ -192,30 +222,17 @@ internal sealed class HOLY
             return new(100+best,"危急抢救选人："+(best==1?"自己":"party"+(best-1)),true);
         if(need&&P(8)<t.Critical&&Rescue(false) is { } targetRescue) return targetRescue;
 
-        bool aoe=F(19)==true&&group.Aoe;
-        bool big=F(19)==true&&group.Major;
-        bool critical=need&&P(8)<t.Critical;
-        bool HandFor(double? hp)=>hp is >0&&hp<t.HealBelow&&hand==true&&Skill(6)&&
-            (hp<t.Major||buff.HandExpiring==true||virtueWindow);
-        bool instant=(canSpend&&Skill(3))||Skill(2)||(infusion==true&&Skill(5));
-        bool CanFollow(double? hp)=>hp is >0&&hp<t.HealBelow&&
-            (instant||HandFor(hp)||(F(10)==true&&(Skill(5)||(hp<t.Major&&hardLight))));
-        // Virtue is setup for healing, not an independently observed heal.
-        // Keep an already valid recipient, including the player. The priority
-        // belongs before ordinary self macros/triage, not to a special unit ID.
-        bool urgentRecipient=selfCritical||critical||(!raid&&best>0&&bestHp<t.Critical);
-        bool virtueOnSelf=F(46)==true;
-        // The buff recipient and the subsequent direct-heal recipient need not
-        // be the same unit. Confirmed self identity also proves zero distance.
-        bool virtueFollowup=CanFollow(P(6))||(healing&&CanFollow(P(8)))||(!raid&&best>0&&CanFollow(bestHp));
-        if(aoe&&!urgentRecipient&&!virtueWindow&&virtueFollowup&&Skill(9)&&context.Allows(15)) {
-            if(virtueOnSelf||healing)
-                return new(15,"群体掉血：优先美德铺垫，随后直接治疗");
-            // Select only when the current recipient cannot support the heal.
-            // Party triage treats self and allies equally; raids retain manual targeting.
-            if(!raid&&best>0&&CanFollow(bestHp)&&F(45+best)!=true)
-                return new(100+best,"为美德选择治疗目标："+(best==1?"自己":"party"+(best-1)));
+        // Expiring free healing precedes ordinary setup, but retains emergency
+        // cooldowns, recipient triage and the normal two-sample target acknowledgement.
+        if(buff.PurposeExpiringConfirmed&&Skill(3)) {
+            if(selfPriority) return new(2,"神圣意志临期：优先自身免费荣耀圣令／永恒之火");
+            if(!raid&&best>0&&F(45+best)!=true)
+                return new(100+best,"神圣意志临期：选择治疗对象 "+(best==1?"自己":"party"+(best-1)));
+            if(need&&F(41) is not null&&F(19) is not null)
+                return new(9,"神圣意志临期：优先免费荣耀圣令／永恒之火，先于美德铺垫");
         }
+
+        if(!urgentRecipient&&VirtueSetup(true) is { } virtue) return virtue;
         // Choose the recipient once; self macros only change the key, not the
         // skill priority. Self Shock still needs a real target/selection route.
         bool selfHeal=selfPriority, needsHeal=selfHeal||need;
@@ -246,14 +263,16 @@ internal sealed class HOLY
         if(needsHeal&&capped&&Skill(3)) return new(glory,"5圣能先消耗荣耀圣令");
         if(toll&&spender) return new(glory,"鸣钟前先消耗至少3圣能，再检查伤情");
         bool wings=t.AutoWings&&(!raid||t.RaidAutoWings)&&Skill(7)&&context.Allows(13,emergency);
-        if(healing&&aoe&&context.Sustained&&wings) return new(13,"持续恶化的群伤：优先翅膀覆盖后续压力");
+        bool wingsWorsening=context.Sustained&&(raid?aoe:F(19)==true&&group.PartyWingsLow);
+        bool wingsPressure=raid?big||emergency||wingsWorsening:F(19)==true&&(group.PartyWingsSevere||wingsWorsening);
+        if(healing&&wingsWorsening&&wings) return new(13,raid?"持续恶化的团队群伤：优先翅膀":"小队至少3人低于70%且持续恶化：优先翅膀");
         // Unknown resources do not authorize a non-emergency generator burst.
         if(toll&&F(91)==false&&(raid?!capped:F(92)==false)) return new(tollKey,raid?"团队有效群伤：鸣钟（;）":
-            partyToll.Immediate?"小队至少2人低于大掉血线：鸣钟（0）":"小队至少2人缺血、总缺血≥40个百分点且连续两次确认：鸣钟（0）");
-        bool pressure=big||emergency||(aoe&&context.Sustained)||(critical&&!instant&&!HandFor(P(8)));
-        if(healing&&pressure&&wings) return new(13,"持续／严重治疗需求：复仇之怒（不依赖灌注或鸣钟冷却）");
-        if(healing&&pressure&&mastery&&!emergency&&spender) return new(glory,"光环掌握附带鸣钟前先消耗圣能");
-        if(healing&&pressure&&mastery&&(emergency||(F(91)==false&&!capped))) return new(14,"治疗压力仍需加码：带鸣钟的光环掌握");
+            partyToll.Immediate?"小队至少3人低于大掉血线：鸣钟（0）":"小队至少3人缺血、总缺血≥40个百分点且连续两次确认：鸣钟（0）");
+        bool groupPressure=big||emergency||(aoe&&context.Sustained);
+        if(healing&&wingsPressure&&wings) return new(13,raid?"持续／严重团队治疗需求：复仇之怒":"小队至少3人低于60%：复仇之怒");
+        if(healing&&groupPressure&&mastery&&!emergency&&spender) return new(glory,"光环掌握附带鸣钟前先消耗圣能");
+        if(healing&&groupPressure&&mastery&&(emergency||(F(91)==false&&!capped))) return new(14,"治疗压力仍需加码：带鸣钟的光环掌握");
         if(Shock(true) is { } fullShock) return fullShock;
         if(needsHeal&&infusion==true&&Skill(5)) return new(flash,"灌注Buff存在：圣光闪现");
         // Presence confirms at least one instant Holy Light remains. Re-read after

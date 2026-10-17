@@ -404,7 +404,9 @@ internal static class DiagnosticTests
         count += ArmsTests.Run();
         count += RetTests.Run();
         count += HolyTests.Run();
+        count += HolyPurposeTests.Run();
         count += HolyPolicyTests.Run();
+        count += HolyGroupPolicyTests.Run();
         count += HolyPriorityTests.Run();
         count += HolyHealingWindowTests.Run();
         count += HolySacrificeTests.Run();

@@ -138,7 +138,7 @@ internal static class PartyRunicPowerTests
                 frames[52]=Color.FromArgb(hp,255,0);frames[8]=Color.FromArgb(hp,hp,hp);
             } else HOLY.Inst.SetRunicPower(scenario=="below45"?lowPower:null);
             if(scenario=="emergency toll") {
-                Hp(2,.18);Hp(3,.19);frames[8]=Color.FromArgb(46,46,46);
+                Hp(2,.18);Hp(3,.19);Hp(4,.19);frames[8]=Color.FromArgb(46,46,46);
                 frames[24]=frames[34]=Color.White;
             }
             if(self) {

@@ -19,7 +19,7 @@ internal static class HolyHealingWindowTests
             f=Enumerable.Range(1,100).ToDictionary(i=>i,_=>Color.Black);
             foreach(int id in new[]{1,2,3,4,5,6,7,9,10,19,20,42,43,44,45,47,96,100}) F(id);
             for(int slot=1;slot<=5;slot++) Member(slot,1);
-            Target(hp);Member(3,hp);Skill(4);Skill(2);
+            Target(hp);Member(3,hp);Member(4,hp);Skill(4);Skill(2);
             f[93]=f[94]=Color.Orange;window.Reset();HOLY.Inst.Reset();HOLY.Inst.Thresholds=t;HOLY.Inst.Buffs=new();
         }
         HolyHealingSample Observe(double now,bool live=true)=>window.Observe(f,t,now,live);
@@ -28,13 +28,15 @@ internal static class HolyHealingWindowTests
 
         Reset();Check(Decide(Observe(0))==8,"first ordinary injury uses normal Shock");
         Check(Decide(Observe(0))==8,"evaluating the same capture twice cannot confirm Toll");
-        Check(Decide(Observe(.1))==4,"78/78 enables Toll after second capture");
-        Reset(.84);Observe(0);Check(Decide(Observe(.1))==8,"84/84 deficit too small");
-        Reset(.8);Observe(0);Check(Decide(Observe(.1))==4,"exact 40 percentage-point deficit qualifies");
-        Reset(.78);Member(3,1);Observe(0);Check(Decide(Observe(.1))==8,"one ordinary injury never qualifies");
-        Reset(.55);Check(Decide(Observe(0))==4,"two below60 do not wait for confirmation");
-        Reset(.1);F(91);F(92);Check(Decide(Observe(0))==4,"two critical bypass overflow guard");
-        Reset();Observe(0);Target(1);Member(3,1);Observe(.1);Target(.78);Member(3,.78);
+        Check(Decide(Observe(.1))==4,"three at78 enable Toll after second capture");
+        Reset(.84);Observe(0);Check(Decide(Observe(.1))==4,"three at84 meet the unchanged deficit gate");
+        var customLine=t with{HealBelow=.95};
+        Reset(.9);Check(!PartyTollReading.Read(f,customLine).Ordinary,"three injured still require sufficient total deficit with a custom healing line");
+        Target(.8);Member(4,229.0/255);Check(PartyTollReading.Read(f,customLine).Ordinary,"three custom-line injuries with40 percentage-point deficit qualify");
+        Reset(.78);Member(3,1);Member(4,1);Observe(0);Check(Decide(Observe(.1))==8,"one ordinary injury never qualifies");
+        Reset(.55);Check(Decide(Observe(0))==4,"three below60 do not wait for confirmation");
+        Reset(.1);F(91);F(92);Check(Decide(Observe(0))==4,"three critical bypass overflow guard");
+        Reset();Observe(0);Target(1);Member(3,1);Member(4,1);Observe(.1);Target(.78);Member(3,.78);Member(4,.78);
         Check(Decide(Observe(.2))==8,"recovery cancels pending ordinary burst");
         Check(Decide(Observe(.3))==4,"new ordinary injury reconfirms");
         Reset();Observe(0);Check(Decide(Observe(2))==8,"sampling gap clears confirmation");
@@ -87,7 +89,7 @@ internal static class HolyHealingWindowTests
         Check(Decide(active,hand)==12,"inferred party Virtue allows useful instant Holy Light");
         hand.HandExpiring=true;Check(Decide(HolyHealingSample.Empty,hand)==12,"confirmed expiry allows ordinary injured target");
         F(94,false);Check(Decide(active,hand)==0,"native absence overrides external expiry and window");
-        f[94]=Color.Orange;Target(1);Member(3,1);Check(Decide(active,hand)==0,"expiry/window never authorizes healing full HP");
+        f[94]=Color.Orange;Target(1);Member(3,1);Member(4,1);Check(Decide(active,hand)==0,"expiry/window never authorizes healing full HP");
         Reset();F(41);Skill(4,false);Skill(2,false);Skill(6);F(10,false);
         Check(Decide(active,new(){HandOfDivinity=true,Infusion=false})==0,"party window cannot change raid Hand rule");
         Skill(4);Skill(6,false);Skill(2);Check(Decide(confirmed)==8,"party ordinary Toll confirmation cannot relax raid thresholds");
@@ -106,7 +108,7 @@ internal static class HolyHealingWindowTests
         Check(HolyBuffs.Read(copy,_=>Color.White).HandExpiring is null,"disabled color cannot grant expiry");
 
         Reset();var log=new HolyHealingDiagnosticLog();var buff=new HolyBuffs();F(29);
-        Check(log.Observe(Observe(0),f,buff,t,false).Count==3,"first diagnostics include Toll Virtue and Hand");
+        Check(log.Observe(Observe(0),f,buff,t,false).Count==4,"first diagnostics include Toll Virtue Hand and Purpose");
         var changes=log.Observe(Observe(.1),f,buff,t,false);Check(changes.Count==1&&changes[0].Key.EndsWith("toll"),"only ordinary confirmation changes");
         F(29,false);active=Observe(.2);changes=log.Observe(active,f,buff,t,false);
         Check(changes.Count==1&&changes[0].Key.EndsWith("virtue"),"one start event");

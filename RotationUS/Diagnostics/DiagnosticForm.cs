@@ -200,6 +200,8 @@ internal sealed class DiagnosticForm : Form
         };
         armsSettings.RowStyles.Add(new(SizeType.Absolute,240));
         holyPoints.PickRequested+=key=>PickSpecial(key);
+        loopTooltip.SetToolTip(holyPoints.Rows["holy_purpose"].Rule,
+            "默认按临期颜色识别：黑=无Buff，指定非黑色=临期，其他非黑色=存在。请采集临期参考色；固定状态源建议剩余≤3秒变色。");
         holyPoints.SaveRequested+=key=>SaveSpecial(key);
         holyPoints.DisableRequested+=key=>
         {
@@ -623,7 +625,7 @@ internal sealed class DiagnosticForm : Form
             if (ClassProfiles.Identify(screenshot.At(layout.Markers[1])) != identity)
                 throw new InvalidOperationException("职业 / 专精已变化，请等待识别后重新取点。");
             using var picker = new SpecialPointPicker(screenshot.Image, bounds, activeProfile.DisplayName,
-                furyKey is not null && activeProfile.SpecId == 70 ? $"{RetBuffs.Label(furyKey)}：{RetBuffs.Rule(furyKey)}；目标减益必须跟随当前目标" : furyKey is not null && activeProfile.SpecId == 65 ? $"{HolyBuffs.Label(furyKey)}：{HolyBuffs.Rule(furyKey,layout.SpecialPoints.GetValueOrDefault(furyKey)?.HandExpiryMode==true)}；选择稳定的状态指示区域，避开图标边缘" : furyKey is not null && activeProfile.SpecId == 71 ? $"{ArmsBuffs.Label(furyKey)}：{ArmsBuffs.Rule(furyKey)}；请采集指定状态的参考色" : furyKey is not null ? $"{FuryBuffs.Label(furyKey)}："+(FuryBuffs.UsesTimeColor(furyKey)?"请在临近结束时取非黑参考色；纯黑=缺失":"纯黑=缺失；任何非黑=存在；所取颜色仅记录") : activeProfile.SpecId == 73 ? "纯黑或等于取色 RGB 时，判定需要施放" : "沿用原复仇代码的非黑像素判断");
+                furyKey is not null && activeProfile.SpecId == 70 ? $"{RetBuffs.Label(furyKey)}：{RetBuffs.Rule(furyKey)}；目标减益必须跟随当前目标" : furyKey is not null && activeProfile.SpecId == 65 ? $"{HolyBuffs.Label(furyKey)}：{HolyBuffs.Rule(furyKey,HolyBuffs.ExpiryMode(furyKey,layout.SpecialPoints.GetValueOrDefault(furyKey)))}；选择稳定的状态指示区域，避开图标边缘" : furyKey is not null && activeProfile.SpecId == 71 ? $"{ArmsBuffs.Label(furyKey)}：{ArmsBuffs.Rule(furyKey)}；请采集指定状态的参考色" : furyKey is not null ? $"{FuryBuffs.Label(furyKey)}："+(FuryBuffs.UsesTimeColor(furyKey)?"请在临近结束时取非黑参考色；纯黑=缺失":"纯黑=缺失；任何非黑=存在；所取颜色仅记录") : activeProfile.SpecId == 73 ? "纯黑或等于取色 RGB 时，判定需要施放" : "沿用原复仇代码的非黑像素判断");
             if (picker.ShowDialog() != DialogResult.OK || picker.Selection is not { } selected) return;
             if (GameCapture.ClientSize(game) != size)
                 throw new InvalidOperationException("选点过程中游戏尺寸变化，请重新选取。");

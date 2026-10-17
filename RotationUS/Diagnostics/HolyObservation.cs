@@ -5,26 +5,31 @@ namespace RotationUS.Diagnostics;
 
 internal sealed class HolyBuffs
 {
-    internal bool? Infusion, HandOfDivinity, DivinePurpose, HandExpiring;
+    internal bool? Infusion, HandOfDivinity, DivinePurpose, HandExpiring, PurposeExpiring;
+    internal bool PurposeExpiringConfirmed=>DivinePurpose==true&&PurposeExpiring==true;
+    internal string PurposeState=>DivinePurpose!=true?DivinePurpose==false?"无Buff":"Buff未知":
+        PurposeExpiring==true?"Buff存在且临期":PurposeExpiring==false?"Buff存在，未临期":"Buff存在，临期状态未配置／未知";
     internal static readonly (string Key,string Label)[] Points = {
         ("holy_i1","圣光灌注Buff"),
         ("holy_hand","神性之手：瞬发圣光术"),
-        ("holy_purpose","神圣意志：免费圣能治疗") };
+        ("holy_purpose","神圣意志：免费圣能技能") };
     // Retain existing display IDs and stored coordinates when a point is removed.
     internal static int PointId(string key)=>key switch {
         "holy_i1"=>101,"holy_hand"=>104,"holy_purpose"=>105,
         _=>throw new ArgumentException("未知神圣特殊点",nameof(key)) };
     internal static string Label(string key)=>Points.First(p=>p.Key==key).Label;
     internal static bool UsesColor(string key)=>true;
-    internal static string Rule(string key,bool handExpiryMode=false)=>key=="holy_hand"&&handExpiryMode?
+    internal static bool ExpiryMode(string key,SpecialPointSetting? setting)=>
+        key=="holy_purpose"||(key=="holy_hand"&&setting?.HandExpiryMode==true);
+    internal static string Rule(string key,bool expiryMode=false)=>key=="holy_purpose"||(key=="holy_hand"&&expiryMode)?
         "黑=无Buff；指定色=临期；其他色=有Buff":"黑=否；指定色=是；其他色=未知";
     internal static bool? Observe(DiagnosticLayout layout,string key,Func<SamplePoint,Color> read)
     {
         if(!layout.SpecialPoints.TryGetValue(key,out var p)||!p.Enabled||p.ReferenceColor is null) return null;
-        if(key=="holy_hand"&&p.HandExpiryMode&&p.ReferenceColor==new SampleColor(0,0,0)) return null;
+        if(ExpiryMode(key,p)&&p.ReferenceColor==new SampleColor(0,0,0)) return null;
         var c=read(p.Point);
         if(c.R==0&&c.G==0&&c.B==0) return false;
-        if(key=="holy_hand"&&p.HandExpiryMode) return true;
+        if(ExpiryMode(key,p)) return true;
         return SampleColor.From(c)==p.ReferenceColor ? true : null;
     }
     internal static bool? ObserveHandExpiry(DiagnosticLayout layout,Func<SamplePoint,Color> read)
@@ -34,9 +39,19 @@ internal sealed class HolyBuffs
         var c=SampleColor.From(read(p.Point));
         return c==p.ReferenceColor;
     }
-    internal static HolyBuffs Read(DiagnosticLayout layout,Func<SamplePoint,Color> read)=>new() {
-        Infusion=Observe(layout,"holy_i1",read),HandOfDivinity=Observe(layout,"holy_hand",read),
-        DivinePurpose=Observe(layout,"holy_purpose",read),HandExpiring=ObserveHandExpiry(layout,read) };
+    internal static HolyBuffs Read(DiagnosticLayout layout,Func<SamplePoint,Color> read)
+    {
+        var result=new HolyBuffs {Infusion=Observe(layout,"holy_i1",read),
+            HandOfDivinity=Observe(layout,"holy_hand",read),HandExpiring=ObserveHandExpiry(layout,read)};
+        if(layout.SpecialPoints.TryGetValue("holy_purpose",out var p)&&p.Enabled&&p.ReferenceColor is not null) {
+            // Both observations must come from the same pixel in the same capture.
+            var color=read(p.Point);
+            result.DivinePurpose=Observe(layout,"holy_purpose",_=>color);
+            if(result.DivinePurpose is not null)
+                result.PurposeExpiring=result.DivinePurpose==true&&SampleColor.From(color)==p.ReferenceColor;
+        }
+        return result;
+    }
     internal static string InstantSourceHint(DiagnosticLayout layout,Dictionary<int,Color> frames,HolyBuffs external)
     {
         var hints=new List<string>();
@@ -75,6 +90,8 @@ internal sealed class HolyBuffs
         if(field.Id=="11") return HolySacrificeReading.Decode(c);
         if(field.Id=="104"&&layout.SpecialPoints.TryGetValue("holy_hand",out var point)&&point.HandExpiryMode)
             return Observe(layout,"holy_hand",_=>c) is not {} has?"未知 · 未配置":!has?"无Buff":ObserveHandExpiry(layout,_=>c)==true?"有Buff · 临期":"有Buff · 未临期";
+        if(field.Id=="105")
+            return Read(layout,_=>c).PurposeState;
         if(field.Id is "14" or "15" or "18") return HolyItemRange.Decode(c);
         if(FuryBuffs.SpecialKey(layout,field) is { } key) return Observe(layout,key,_=>c) is { } value?value?"是 · 固定点":"否 · 固定点":"未知 · 未配置或颜色不匹配";
         if(field.Id is "6" or "7" or "8" && (c.R!=c.G||c.G!=c.B)) return "未知（百分比采集失败）";
@@ -117,24 +134,29 @@ internal sealed record HealingThresholds(double Critical=.20,double Major=.60,do
     }
 }
 internal sealed record GroupInjury(int Alive,int Low,int Critical,int Injured,bool Major,bool Aoe,bool Reliable,int Unknown=0,
-    bool Toll=false,int Urgent=0);
+    bool Toll=false,int Urgent=0,bool PartyWingsSevere=false,bool PartyWingsLow=false);
 internal static class HolyTriage
 {
+    internal const int MinimumGroupMembers=3;
     internal static string Single(double? hp,HealingThresholds t)=>hp is null?"血量未知":hp<t.Critical?"单体危急":hp<t.Major?"单体大掉血":hp<t.HealBelow?"单体普通掉血":"轻微掉血，无需治疗";
     internal static GroupInjury Analyze(Dictionary<int,Color> frames,bool raid,HealingThresholds t)
     {
-        int alive=0,low=0,critical=0,injured=0,unknown=0,tollLow=0,tollCritical=0,urgent=0;
+        int alive=0,low=0,critical=0,injured=0,unknown=0,tollLow=0,tollCritical=0,urgent=0,wingsSevere=0,wingsLow=0;
         for(int slot=1;slot<=(raid?40:5);slot++) {
             var hp=frames.TryGetValue(50+slot,out var c)?TeamHealthReading.Read(c):new(TeamHealthStatus.Unknown,null);
             if(hp.Status==TeamHealthStatus.Unknown) {unknown++;continue;}
             if(hp.Percent is not >0) continue;
             alive++;if(hp.Percent<t.GroupLow) low++;if(hp.Percent<t.GroupCritical) critical++;if(hp.Percent<t.HealBelow) injured++;
             if(hp.Percent<t.TollLow) tollLow++;if(hp.Percent<t.TollCritical) tollCritical++;if(hp.Percent<t.Critical) urgent++;
+            // User-selected Wings thresholds are independent of other group
+            // spells and their configurable injury lines.
+            if(hp.Percent<.60) wingsSevere++;if(hp.Percent<.70) wingsLow++;
         }
         bool reliable=alive>0&&(double)alive/(alive+unknown)>=t.MinimumCoverage;
-        bool major=reliable&&(low>=(raid?Math.Max(3,(int)Math.Ceiling(alive*t.RaidLowFraction)):3)||critical>=(raid?Math.Max(2,(int)Math.Ceiling(alive*t.RaidCriticalFraction)):2));
+        bool major=reliable&&(low>=(raid?Math.Max(MinimumGroupMembers,(int)Math.Ceiling(alive*t.RaidLowFraction)):MinimumGroupMembers)||critical>=(raid?Math.Max(MinimumGroupMembers,(int)Math.Ceiling(alive*t.RaidCriticalFraction)):MinimumGroupMembers));
         // The relaxed Toll thresholds apply to parties; raid population scaling is retained.
-        bool toll=reliable&&(raid?major:tollLow>=3||tollCritical>=2);
-        return new(alive,low,critical,injured,major,reliable&&injured>=(raid?Math.Max(3,(int)Math.Ceiling(alive*.20)):2),reliable,unknown,toll,urgent);
+        bool toll=reliable&&(raid?major:tollLow>=MinimumGroupMembers||tollCritical>=MinimumGroupMembers);
+        return new(alive,low,critical,injured,major,reliable&&injured>=(raid?Math.Max(MinimumGroupMembers,(int)Math.Ceiling(alive*.20)):MinimumGroupMembers),reliable,unknown,toll,urgent,
+            !raid&&reliable&&wingsSevere>=MinimumGroupMembers,!raid&&reliable&&wingsLow>=MinimumGroupMembers);
     }
 }

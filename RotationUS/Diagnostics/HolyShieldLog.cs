@@ -29,13 +29,13 @@ internal sealed class HolyShieldLog
         if(now-lastSample<.25) return;
         lastSample=now;
         for(int i=0;i<layout.Frames.Length;i++) frames[i+1]=sample.At(layout.Frames[i]);
-        RecordFrames(frames,layout.HolyThresholds,live,executing,executionReason,now);
+        RecordFrames(frames,layout.HolyThresholds,live,executing,executionReason,now,HolyBuffs.Read(layout,sample.At));
     }
 
-    internal void RecordFrames(Dictionary<int,Color> values,HealingThresholds thresholds,bool live,bool executing,string executionReason,double now)
+    internal void RecordFrames(Dictionary<int,Color> values,HealingThresholds thresholds,bool live,bool executing,string executionReason,double now,HolyBuffs? buffs=null)
     {
         string signature=$"有效采样={live}；执行开启={executing}；执行判断={executionReason}；"+
-            (live?Describe(values,thresholds,true):"采样无效，不能推断盾击阻挡原因");
+            (live?Describe(values,thresholds,true,buffs):"采样无效，不能推断盾击阻挡原因");
         if(signature==lastSignature) return;
         if(Write(new[]{signature})) lastSignature=signature;
     }
@@ -71,7 +71,7 @@ internal sealed class HolyShieldLog
         } catch(Exception e) when(e is IOException or UnauthorizedAccessException) {Error=e.Message;return false;}
     }
 
-    internal static string Describe(Dictionary<int,Color> values,HealingThresholds thresholds,bool live)
+    internal static string Describe(Dictionary<int,Color> values,HealingThresholds thresholds,bool live,HolyBuffs? buffs=null)
     {
         bool? F(int id)=>values.TryGetValue(id,out var c)?FuryBuffs.Boolean(c):null;
         double? P(int id)=>values.TryGetValue(id,out var c)&&c.R==c.G&&c.G==c.B?c.R/255.0:null;
@@ -83,7 +83,9 @@ internal sealed class HolyShieldLog
         }
         Gate(1,"战斗");Gate(2,"存活且未骑乘");Gate(3,"目标存活");Gate(4,"目标为敌对",false);
         Gate(12,"目标可攻击");Gate(95,"近战范围");Gate(97,"盾击已学就绪");Gate(98,"盾击可用");
-        Gate(9,"未施法");Gate(20,"GCD就绪");Gate(19,"有队伍");Gate(92,"5圣能");Gate(13,"神圣震击至少2充能");
+        Gate(9,"未施法");Gate(20,"GCD就绪");Gate(19,"有队伍");
+        Gate(96,"神圣采集器已加载");Gate(100,"新版采集器已加载");
+        if(buffs?.PurposeExpiringConfirmed!=true) {Gate(92,"5圣能");Gate(13,"神圣震击至少2充能");}
         if(F(41) is null) blockers.Add("队伍类型[41]=未知");
         var group=HolyTriage.Analyze(values,F(41)==true,thresholds);
         if(!(P(6)>=thresholds.HealBelow)) blockers.Add("自身未达到治疗线或血量未知");
@@ -101,7 +103,9 @@ internal sealed class HolyShieldLog
             var reading=values.TryGetValue(50+slot,out var c)?TeamHealthReading.Read(c):new(TeamHealthStatus.Unknown,null);
             return $"{slot}="+(reading.Percent is {} p?(p*100).ToString("F1")+"%":reading.Status.ToString());
         }));
-        return gateSummary+$"；自身HP={P(6)?.ToString("P1")??"未知"}；治疗线={thresholds.HealBelow:P0}；"+raw+"；"+probes+"；成员HP="+members;
+        return gateSummary+"；神圣意志="+(buffs?.PurposeState??"Buff未知")+
+            (buffs?.PurposeExpiringConfirmed==true?"；临期例外：不要求5圣能／震击2充能":"；常规盾击资源条件")+
+            $"；自身HP={P(6)?.ToString("P1")??"未知"}；治疗线={thresholds.HealBelow:P0}；"+raw+"；"+probes+"；成员HP="+members;
     }
 
     internal static int RunTests()

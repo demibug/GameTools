@@ -94,18 +94,20 @@ internal static class HolyPolicyTests
         foreach(bool? virtue in new bool?[]{true,false,null}) {
             Reset();Group(.1);Skill(4);Skill(3);F(91);F(92);Skill(9);
             frames[29]=virtue is null?Color.Orange:virtue==true?Color.White:Color.Black;
-            Want(4,"multiple critical allies permit emergency Toll overflow regardless of Virtue");
+            Want(virtue==true?15:4,"multiple critical allies open usable Virtue, otherwise emergency Toll permits overflow");
         }
         var confirmedToll=new HolyCooldownContext(Healing:new(new PartyTollReading(true),TollConfirmed:true));
         Reset();Group(.75);Skill(4);Want(0,"ordinary group injury needs consecutive evidence");
         Want(4,"confirmed ordinary group damage enables Toll",confirmedToll);
-        Member(4,1);Want(4,"confirmed two below80 with sufficient deficit enable party Toll",confirmedToll);
-        Hp(8,.55);Member(2,.55);Member(3,.55);Want(4,"two below60 enable party Toll");
+        Member(4,1);Want(0,"confirmed two below80 cannot enable party Toll",confirmedToll);
+        Hp(8,.55);Member(2,.55);Member(3,.55);Want(0,"two below60 cannot enable party Toll");
+        Member(4,.55);Want(4,"three below60 enable party Toll");
         frames[54]=frames[55]=Color.Orange;Want(0,"unreliable group data cannot authorize Toll");
         Reset();Group(.75);Skill(4);settings=settings with{HealBelow=.7};Want(0,"ordinary Toll uses configured healing line",confirmedToll);
         Reset(true);Group(.75);Skill(4);Want(0,"relaxed party threshold not applied to forty-person raid");
         Reset(true);Hp(8,.1);Member(2,.1);Member(3,.1);Skill(4);F(91);F(92);
-        Want(10,"two imminent deaths in a large raid may bypass population and overflow gates");
+        Want(0,"two imminent deaths in a large raid cannot enable group Toll");
+        Member(4,.1);Want(10,"three imminent deaths in a large raid may bypass population and overflow gates");
 
         Reset();Hp(8,1);Member(2,1);F(4,false);F(12);F(47,false);F(91);F(92);F(95);F(97);F(98);Skill(1);
         Want(0,"capped Holy Power waits without two Shock charges");
@@ -120,7 +122,7 @@ internal static class HolyPolicyTests
             F(34,false);Want(13,"needed Wings independent of Infusion and Toll cooldown");
         }
         Reset();Hp(8,.1);Member(2,.1);Skill(7);Skill(5);
-        Want(13,"critical ally with no instant heal can request Wings before a hard cast");
+        Want(11,"critical ally with no instant heal uses Flash instead of single-target Wings");
         Skill(2);Want(8,"available instant heal saves critical ally before Wings");
         Reset();Group();Skill(7);Skill(2);settings=settings with{AutoWings=false};Want(8,"manual Wings reserve");
         Reset(true);Group();for(int i=5;i<=12;i++) Member(i,.4);Skill(7);Skill(2);
@@ -170,9 +172,9 @@ internal static class HolyPolicyTests
 
         // The requested Virtue-first party examples, through real Process as
         // well as the pure decision. Target confirmation remains mandatory.
-        Reset();Hp(6,.6);Member(1,.6);Hp(8,.7);Member(2,.7);
+        Reset();Hp(6,.6);Member(1,.6);Hp(8,.7);Member(2,.7);Member(4,.75);
         Skill(9);Skill(5);buff.Infusion=true;
-        Want(15,"ordinary self60 ally70 injury prepares Virtue before self Flash");
+        Want(15,"three ordinary injuries prepare Virtue before self Flash");
         F(46);F(47,false);Hp(8,.6);
         Want(15,"Virtue can cast on self without switching to an ally");
         frames[5]=Color.Orange;Want(15,"confirmed self recipient does not depend on an external friendly range query");F(5);
@@ -194,12 +196,13 @@ internal static class HolyPolicyTests
             Reset();Skill(9);Skill(5);Skill(3);F(91);buff.Infusion=true;
             if(self) {Hp(6,.15);Member(1,.15);Hp(8,.7);Member(2,.7);}
             else {Hp(6,.7);Member(1,.7);Hp(8,.15);Member(2,.15);}
-            Want(self?1:11,"self and ally15 use infused Flash rescue ahead of ordinary three-HP spender and Virtue");
+            Want(self?2:11,"self15 prioritizes three-HP spender; ally15 retains infused Flash priority");
             F(92);Want(self?2:9,"self and ally capped rescue first spends Holy Power");F(92,false);
             buff.DivinePurpose=true;Want(self?2:9,"confirmed free rescue uses the actual spender for self and ally");
             buff.DivinePurpose=false;
             if(self) {Hp(6,.6);Member(1,.6);}
             else {Hp(8,.6);Member(2,.6);}
+            Member(3,.75);
             Want(15,"recovered emergency returns to group Virtue setup rather than perpetual direct rescue");
         }
         Reset();Group(.4);Skill(7);Skill(2);
@@ -274,7 +277,7 @@ internal static class HolyPolicyTests
 
         Reset();Group(.83);Skill(7);Skill(4);Skill(2);
         Check(Tick(0)==8,"ordinary initial group damage uses regular healing");
-        Group(.72);Check(Tick(2.1)==13,"sustained worsening chooses Wings even when Toll is ready");
+        Group(.65);Check(Tick(2.1)==13,"three below70 with sustained worsening choose Wings even when Toll is ready");
         Skill(7,false);Skill(8);settings=settings with{AutoAuraMastery=true,AuraMasteryHasToll=true};
         Check(Tick(3)==4,"ordinary residual injury uses eligible Toll without inheriting a Wings waiting period");
         Reset();Group(.83);Skill(7);Skill(2);Check(Tick(0)==8,"stable ordinary damage setup");
