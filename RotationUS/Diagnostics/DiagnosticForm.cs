@@ -79,6 +79,9 @@ internal sealed class DiagnosticForm : Form
     private string exportDirectory;
     private readonly SavedLogStore savedLogs;
     private readonly HolyShieldLog holyShieldLog;
+    private readonly RetCombatLog retCombatLog;
+    private bool retLogAnnounced;
+    private string? retLogError;
     private bool shieldLogAnnounced;
     private string? shieldLogError;
     private readonly StableLocator locator = new();
@@ -102,6 +105,7 @@ internal sealed class DiagnosticForm : Form
     {
         this.savedLogs = savedLogs ?? new SavedLogStore(AppContext.BaseDirectory);
         holyShieldLog=new HolyShieldLog(this.savedLogs);
+        retCombatLog=new RetCombatLog(this.savedLogs);
         this.profileLayouts = profileLayouts ?? new ProfileLayouts(AppContext.BaseDirectory);
         this.execution = execution ?? new RotationExecution();
         var floatingSettings = new FloatingWindowSettings(Path.GetDirectoryName(this.profileLayouts.DiscoveryPath)!);
@@ -718,6 +722,16 @@ internal sealed class DiagnosticForm : Form
             string reason = mode == 4 ? "定位图案" : activeProfile is null ? identity.DisplayName : mode != 2 ? "插件尚未输出 / 需重载 / 坐标不匹配" : !alive ? "心跳等待或超过 1.5 秒未变化" : "";
             // Execute from the fresh sample before any table, log or preview work.
             string executionText = activeProfile is null ? "执行已关闭" : execution.Tick(game, layout, next, live, clock.Elapsed.TotalSeconds, activeProfile);
+            if(activeProfile?.SpecId==70) {
+                retCombatLog.Record(next,layout,live,execution.Enabled,executionText);
+                if(retCombatLog.Started&&!retLogAnnounced) {
+                    retLogAnnounced=true;AddLog("惩戒连续诊断日志："+retCombatLog.Path,"ret-trace-path");
+                }
+                if(retCombatLog.Error!=retLogError) {
+                    retLogError=retCombatLog.Error;
+                    AddLog(retLogError is null?"惩戒诊断日志写入已恢复":"惩戒诊断日志写入失败："+retLogError,"ret-trace-error");
+                }
+            }
             if(activeProfile?.SpecId==65) {
                 RecordPartyDiagnostics(roster,power,id=>next.At(layout.Frames[id-1]),PartyFlag(1),partyRoster.Status,partyPower.Status);
                 RecordHealingDiagnostics(live?HolyBuffs.Read(layout,next.At):new());
@@ -976,7 +990,7 @@ internal sealed class DiagnosticForm : Form
         foreach (DataGridViewRow row in grid.Rows) csv.AppendLine(string.Join(",", row.Cells.Cast<DataGridViewCell>().Where(c => c.ColumnIndex != 3).Select(c => Quote(c.Value))));
         File.WriteAllText(path + ".csv", csv.ToString(), new UTF8Encoding(true));
         File.WriteAllText(path + ".log.txt", $"最后画面时间：{capturedAt:O}\n状态：{status.Text}\n截图客户区范围：{captured.Bounds}\n"+
-            $"完整神圣自动日志：{(holyShieldLog.Started?holyShieldLog.Path:"尚未创建")}\n小队当前诊断快照：\n{partyDiagnostics.Snapshot}\n治疗窗口快照：\n{healingDiagnostics.Snapshot}\n牺牲联动：{HOLY.Inst.Sacrifice.Status}\n窗口变化记录：\n"+
+            $"完整神圣自动日志：{(holyShieldLog.Started?holyShieldLog.Path:"尚未创建")}\n完整惩戒自动日志：{(retCombatLog.Started?retCombatLog.Path:"尚未创建")}\n小队当前诊断快照：\n{partyDiagnostics.Snapshot}\n治疗窗口快照：\n{healingDiagnostics.Snapshot}\n牺牲联动：{HOLY.Inst.Sacrifice.Status}\n窗口变化记录：\n"+
             string.Join(Environment.NewLine, log), Encoding.UTF8);
         savedLogs.Remember(path + ".log.txt");
         capturedLayout.Save(path + ".layout.json");

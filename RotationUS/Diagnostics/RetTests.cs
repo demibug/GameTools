@@ -19,7 +19,8 @@ internal static class RetTests
         {
             for(int i=1;i<=100;i++) { F(i,false);B(i,false); }
             foreach(int i in new[]{1,2,3,4,9,16,50}) F(i);
-            foreach(int i in new[]{8,9,10,12,13,15,17,18}) B(i);
+            foreach(int i in new[]{8,9,10,12,13,15,17,18,28}) B(i);
+            for(int i=30;i<=42;i++) B(i);
             f[19]=RetBuffs.Signature;f[6]=Color.White;b[14]=Color.FromArgb(1,70,1);F(5,aoe);
             buff=new(){Art=O(),Legacy=O(),FreeHammer=O(),Ruling=O(),Wings=O(),Sentence=O(),Expurgation=O(true)};
         }
@@ -51,7 +52,73 @@ internal static class RetTests
         Reset();Dps();F(5);b[15]=Color.Orange;buff.Legacy=default;F(8);Want(0,"群体增益未知挡住满能量消耗");
         Reset();Dps();f[5]=Color.Orange;Want(0,"目标数未知不猜单体");
         Reset();Dps();F(9,false);Want(0,"资源来源失效");
+        foreach(bool aoe in new[]{false,true}) {
+            Reset(aoe);F(7,false);F(8,false);Skill(aoe?4:3);Skill(7);
+            F(aoe?29:27,false);Want(14,"1圣能且终结技不可用时选择公正之剑产能");
+            Skill(7,false);Want(0,"1圣能且无产能技能时不反复按不可用终结技");
+            F(aoe?29:27);Want(aoe?9:11,"低圣能但真正免费可用的终结技仍允许释放");
+        }
         Reset();Dps();F(16,false);Want(0,"GCD门槛");
+        // Every offensive/interrupt action must honor the corrected usability observation.
+        int[] spellKeys={7,8,12,11,9,12,13,14,10,21};
+        for(int index=0;index<spellKeys.Length;index++) {
+            Reset(index==4);Skill(index);
+            if(index==0) { F(10);B(9,false);B(10,false); }
+            if(index==1) { F(10);B(8,false);B(10,false); }
+            if(index==2) B(6);
+            if(index==9) { F(11);F(12); }
+            Want(spellKeys[index],"各技能可用时允许："+index);
+            F(21+index*2,false);Want(index==9?29:0,"各技能不可用时不误发："+index);
+            f[21+index*2]=Color.Orange;Want(0,"各技能可用性未知时不误发："+index);
+            F(21+index*2);Want(spellKeys[index],"各技能可用性恢复后允许："+index);
+            B(30+index,false);Want(index==9?29:0,"可用为真但资源不足仍禁止技能："+index);
+            b[30+index]=Color.Orange;Want(0,"资源状态未知不能只凭可用放行："+index);
+            B(30+index);Want(spellKeys[index],"资源状态恢复允许技能："+index);
+        }
+        foreach(bool aoe in new[]{false,true}) {
+            Reset(aoe);Skill(aoe?4:3);Skill(7);F(7,false);F(8,false);
+            B(aoe?34:33,false);Want(14,"低圣能且可用为真但资源不足时继续产能");
+            B(aoe?34:33);Want(aoe?9:11,"免费消耗未报告资源不足时允许终结技");
+        }
+        Reset();Dps();f[19]=Color.FromArgb(70,3,2);Want(0,"v3缺少独立资源校验必须拒绝");
+        Reset();B(19);B(23);B(24);B(27);B(21);B(22);B(41,false);Want(2,"闪现资源不足回退圣令");
+        B(40,false);Want(0,"圣令资源不足不发键");
+        B(20);B(25);B(26);B(42,false);Want(0,"圣佑资源不足不发键");
+        // These fields now carry the collector's Hammer of Justice 10-yard gate.
+        foreach(var entry in new[]{(Index:3,Key:11),(Index:5,Key:12),(Index:6,Key:13),(Index:7,Key:14),(Index:8,Key:10)}) {
+            Reset();Skill(entry.Index);Want(entry.Key,"10码内允许对应输出技能");
+            F(39+entry.Index,false);Want(0,"10码外阻止对应输出技能");
+            f[39+entry.Index]=Color.Orange;Want(0,"10码范围未知不放行");
+        }
+        foreach(bool free in new[]{false,true}) {
+            Reset();Skill(2);B(6);B(7,free);buff.FreeHammer=O(free,free);
+            Want(12,"普通与免费圣光之锤10码内允许共用键");
+            F(41,false);Want(0,"普通与免费圣光之锤10码外不放行");
+            f[41]=Color.Orange;Want(0,"普通与免费圣光之锤范围未知不放行");
+        }
+        foreach(bool capped in new[]{false,true}) {
+            Reset(true);Skill(4);F(8,capped);Want(9,"普通与满圣能神圣风暴10码内允许");
+            F(43,false);Want(0,"普通与满圣能神圣风暴10码外不放行");
+            f[43]=Color.Orange;Want(0,"普通与满圣能神圣风暴范围未知不放行");
+        }
+        Reset();Skill(8);F(17);Want(10,"审判替换愤怒之锤沿用同键和10码门槛");
+        F(47,false);Want(0,"审判替换形态10码外也不放行");
+        Reset();Skill(3);F(8);F(42,false);Want(0,"满圣能最终审判也不能越过10码门槛");
+        Reset();Skill(1);F(10);B(8,false);B(10,false);Want(8,"10码内允许军官处决");
+        F(40,false);Want(0,"军官处决10码外等待");
+        f[40]=Color.Orange;Want(0,"军官处决范围未知等待");
+        Reset();Dps();F(10);buff.Expurgation=O();F(46,false);B(28,false);Want(0,"爆发前公正之剑和翅膀都不能越过10码");
+        B(28);Want(7,"公正之剑范围未通过但翅膀范围通过时仅跳过准备，不按公正之剑");
+        Reset();Skill(0);F(10);B(9,false);B(10,false);
+        B(28,false);Want(0,"单独翅膀／征伐在10码外不能发键");
+        b[28]=Color.Orange;Want(0,"翅膀／征伐10码范围未知不能发键");
+        b.Remove(28);Want(0,"旧采样缺失翅膀范围不能放行");
+        B(28);Want(7,"未学处决也能在10码内单独开翅膀");
+        var wingsSent=Decide();B(28,false);
+        Check(Decide(wingsSent.Request,.1).Key==0,"翅膀重试也检查10码范围");
+        F(18);F(20,false);
+        Check(Decide(wingsSent.Request,.2).Key==28,"翅膀确认成功后离开10码仍能收尾");
+        f[19]=Color.FromArgb(70,2,2);Want(0,"旧v2协议不能绕过新增翅膀距离条件");
         Reset();Dps();B(19);foreach(int i in new[]{21,22,23,24,25,26,27}) B(i);
         F(3,false);buff=new();Want(1,"低于80%空目标优先7瞬发闪现，不依赖输出点");
         B(27,false);Want(2,"非瞬发闪现不读条，回退8荣耀圣令");
@@ -78,9 +145,39 @@ internal static class RetTests
         F(14,false);Want(23,"治疗石不可用再药水");
         f[6]=Color.Orange;Want(0,"未知血量不触发物品");
         Reset();F(11);F(12);F(13);Skill(9);F(16,false);Want(21,"食物标记责难不等GCD");
-        f[13]=Color.Orange;Want(0,"可打断性未知不猜测");
-        F(13,false);Want(29,"不可打断清除食物");
+        B(28,false);f[5]=Color.Orange;buff=new();Want(21,"责难独立于翅膀10码、敌人数和输出增益");
+        f[13]=Color.Orange;Want(21,"沿用防战武器战：可打断性未知不阻止责难");
+        F(13,false);Want(21,"沿用防战武器战：不可打断读条仍尝试责难");
+        f.Remove(13);Want(21,"可打断诊断字段缺失也不阻止责难");
+        foreach(int field in new[]{3,12,38,39,48}) {
+            Reset();F(11);F(12);F(13);Skill(9);F(field,false);
+            Want(29,"责难任一明确无效条件清理食物："+field);
+            f[field]=Color.Orange;Want(0,"责难任一未知条件等待："+field);
+            F(field);Want(21,"责难条件恢复可发Shift+3："+field);
+        }
+        Reset();F(12);F(13);Skill(9);Want(0,"没有食物标记不自动责难");
         Reset();Dps();F(10);buff.Expurgation=O();Want(14,"爆发先补灼烧");
+        var prepare=Decide();
+        Check(prepare.Request.Sent&&prepare.Request.Stage==RetStage.Prepare,"准备阶段记录公正之剑请求");
+        Check(Decide(prepare.Request,.1).Key==0,"公正之剑发键不等于成功，不重复请求准备技能");
+        F(16,false);F(34,false);
+        var preparedWings=Decide(prepare.Request,.32);
+        Check(preparedWings.Key==7&&preparedWings.Request.Stage==RetStage.Wings,
+            "复现11:56:58日志：公正之剑进入冷却但异端逐除仍黑，GCD中仍继续翅膀");
+        Check(preparedWings.Request.SentAt==.32,"准备阶段计时不能污染翅膀确认计时");
+        F(18);F(20,false);F(16);
+        Check(Decide(preparedWings.Request,.5).Key==8,"准备完成后翅膀确认仍正常接处决");
+        Reset();Dps();F(10);buff.Expurgation=O();prepare=Decide();
+        Check(Decide(prepare.Request,2).Key==7,"准备技能未确认超过2秒跳过，不取消军官或假定减益存在");
+        F(34,false);Want(7,"公正之剑已在冷却时不等待异端逐除，直接翅膀");
+        Reset();Dps();F(10);buff.Expurgation=default;prepare=Decide();
+        Check(Decide(prepare.Request,2).Key==7,"异端逐除未配置不能永久挡住翅膀");
+        B(28,false);Check(Decide(prepare.Request,2).Key==0,"跳过准备不能绕过翅膀10码门槛");
+        B(28);B(30,false);Check(Decide(prepare.Request,2).Key==0,"跳过准备不能绕过翅膀资源门槛");
+        B(30);F(21,false);Check(Decide(prepare.Request,2).Key==0,"跳过准备不能绕过翅膀可用性");
+        Reset();Dps();F(10);buff.Expurgation=O();prepare=Decide();
+        b[14]=Color.FromArgb(2,70,1);Check(Decide(prepare.Request,.3).Key==28,"准备期间换目标仍取消军官");
+        Reset();Dps();F(10);
         buff.Expurgation=default;Want(0,"当前目标异端逐除未知不启动爆发");
         buff.Expurgation=O(true);
         var wings=Decide();Check(wings.Key==7&&wings.Request.Sent,"军官第一步翅膀");
@@ -163,6 +260,24 @@ internal static class RetTests
         var saved=settings.BuildLayout(layout,"ret_art");settings.LoadSettings(saved,"ret_art");
         Check(settings.Rows["ret_free"].Pending?.Color==new SampleColor(90,100,110),"独立行待保存颜色不会丢失");
         Check(saved.SpecialPoints["ret_art"].ReferenceColor==new SampleColor(60,70,80),"保存只用本行颜色");
+        // Continuous trace records even without any presentation tick or input dispatch.
+        var traceDirectory=Path.Combine(Path.GetTempPath(),"hiji-ret-log-"+Guid.NewGuid().ToString("N"));
+        var traceStore=new SavedLogStore(traceDirectory);
+        var trace=new RetCombatLog(traceStore);
+        Reset();F(27);B(33,false);
+        trace.RecordValues(i=>f[i],i=>b[i],true,true,"单体 · 公正之剑");
+        string firstTrace=File.ReadAllText(trace.Path);
+        Check(trace.Started&&trace.Error is null,"连续惩戒日志可独立于界面刷新落盘");
+        Check(firstTrace.Contains("F27=255,255,255")&&firstTrace.Contains("B33=0,0,0"),"日志同时保留可用为真和资源不足的冲突");
+        trace.RecordValues(i=>f[i],i=>b[i],true,true,"单体 · 公正之剑");
+        Check(File.ReadAllText(trace.Path)==firstTrace,"相同采样不重复写入");
+        B(33);trace.RecordValues(i=>f[i],i=>b[i],true,true,"单体 · 最终审判");
+        Check(File.ReadAllText(trace.Path).Contains("单体 · 最终审判"),"资源恢复及动作判断变化写入");
+        trace.RecordValues(i=>f[i],i=>b[i],false,true,"执行等待有效职业数据 / 心跳");
+        Check(File.ReadAllText(trace.Path).Contains("无效采样，以下原始颜色不可用于决策"),"失效采样不会伪装成有效释放依据");
+        Check(File.ReadAllText(Path.Combine(traceDirectory,"saved-log-files.json")).Contains("ret-combat-"),"连续日志纳入保存日志索引");
+        File.Delete(trace.Path);File.Delete(Path.Combine(traceDirectory,"saved-log-files.json"));
+        Directory.Delete(traceStore.DefaultDirectory);Directory.Delete(traceDirectory);
         return count;
     }
     internal static void Render(string path)

@@ -28,12 +28,12 @@ internal sealed class CJQ
         var state=request??new();
         bool? F(int id)=>f.TryGetValue(id,out var c)?FuryBuffs.Boolean(c):null;
         bool? B(int id)=>b.TryGetValue(id,out var c)?FuryBuffs.Boolean(c):null;
-        bool? Skill(int index)=>F(20+index*2)&F(21+index*2)&(index==0?true:F(39+index));
+        bool? Skill(int index)=>F(20+index*2)&F(21+index*2)&B(30+index)&(index==0?B(28):F(39+index));
         string branch=F(5)==true?"多目标":F(5)==false?"单体":"目标数未知";
         RetDecision Result(int key,string reason)=>new(key,reason,branch,state);
         RetDecision Cancel(string reason) { state=new(RetStage.Clear);return Result(F(10)==true?28:0,reason); }
         if(!f.TryGetValue(19,out var sig)||sig.ToArgb()!=RetBuffs.Signature.ToArgb()||F(50)!=true)
-            return Cancel("等待惩戒v2有效协议，请 /reload") with {Key=0};
+            return Cancel("等待惩戒v4有效协议，请 /reload") with {Key=0};
         if(F(10)==false) state=new();
         if(F(10) is null&&state.Stage!=RetStage.Idle) state=new(RetStage.Clear);
         if(F(1)!=true||F(2)!=true) {
@@ -49,21 +49,27 @@ internal sealed class CJQ
         }
         // Self-target macros: independent of enemy target and offensive buff points.
         // Protection is off the GCD; heals must wait for the GCD and never interrupt a cast.
-        if((B(20)&B(25)&B(26)&F(4))==true) return Result(3,"自身血量<60%：圣佑术（9）");
+        if((B(20)&B(25)&B(26)&B(42)&F(4))==true) return Result(3,"自身血量<60%：圣佑术（9）");
         if((B(19)&F(4)&F(16))==true) {
-            bool? flash=B(23)&B(24)&B(27);
+            bool? flash=B(23)&B(24)&B(27)&B(41);
             if(flash==true) return Result(1,"自身血量<80%：瞬发圣光闪现（7）");
             if(flash is null) return Result(0,"等待圣光闪现可用/瞬发来源，不读条");
-            bool? glory=B(21)&B(22);
+            bool? glory=B(21)&B(22)&B(40);
             if(glory==true) return Result(2,"瞬发闪现不可用且血量<80%：荣耀圣令（8）");
             if(glory is null) return Result(0,"等待自身荣耀圣令可用状态");
         }
         if(state.Stage==RetStage.Clear) return Result(F(10)==true?28:0,"清理已完成/已取消的军官请求");
         if(F(11)==true) {
-            bool? interrupt=F(3)&F(12)&F(13)&Skill(9);
-            if(interrupt==true) return Result(21,"责难：食物标记请求");
-            if(interrupt==false) return Result(29,"取消食物：无可打断目标/技能冷却/超范围");
-            return Result(0,"等待责难范围/可打断状态");
+            var gates=new (int Field,string Invalid,string Unknown)[] {
+                (3,"无有效敌对目标","目标有效性"),(12,"目标没有读条或引导","目标施法状态"),
+                // Match Protection/Arms: cast presence gates the request; interruptibility is diagnostic only.
+                (38,"责难未就绪或未学","责难自身冷却"),
+                (39,"责难不可用","责难可用状态"),(48,"目标超出责难自身射程","责难自身射程") };
+            foreach(var gate in gates) if(F(gate.Field)==false) return Result(29,"取消食物："+gate.Invalid);
+            if(B(39)==false) return Result(29,"取消食物：责难资源不足");
+            foreach(var gate in gates) if(F(gate.Field) is null) return Result(0,"等待"+gate.Unknown);
+            if(B(39) is null) return Result(0,"等待责难资源状态");
+            return Result(21,"责难：食物标记请求");
         }
         if(F(3)!=true) return F(10)==true?Cancel("无有效敌对目标，取消军官"):Result(0,"等待有效敌对目标");
         if(B(11)!=false||B(12)!=true||B(13)!=true)
@@ -78,18 +84,30 @@ internal sealed class CJQ
         }
         if(state.Stage!=RetStage.Idle) {
             if(now-state.Started>8) return Cancel("爆发请求超过8秒未完成，取消请求");
-            if(state.Sent&&now-state.SentAt>2) return Cancel("发键后2秒未确认技能进入自身冷却，取消请求");
+            if(state.Stage!=RetStage.Prepare&&state.Sent&&now-state.SentAt>2) return Cancel("发键后2秒未确认技能进入自身冷却，取消请求");
             if(state.Stage==RetStage.Prepare) {
-                if(B(10) is null) return Result(0,"等待神圣烈焰天赋来源");
-                if(B(10)==true&&buff.Expurgation.Present!=true) {
-                    if(buff.Expurgation.Present is null) return Result(0,"等待当前目标异端逐除取色");
-                    return Result((F(4)&F(16)&Skill(7))==true?14:0,"爆发前公正之剑建立异端逐除");
+                // Optional setup gets at most two seconds of the request budget.
+                // A black/missing debuff pixel must not hold Wings until the whole request expires.
+                // Sending Blade is not confirmation: wait for its own cooldown, or skip on timeout.
+                if(now-state.Started<2) {
+                    if(B(10) is null) return Result(0,"等待神圣烈焰天赋来源（准备最多2秒）");
+                    if(B(10)==true&&buff.Expurgation.Present!=true) {
+                        if(buff.Expurgation.Present is null) return Result(0,"等待当前目标异端逐除取色（准备最多2秒）");
+                        if(state.Sent) {
+                            if(F(34)!=false) return Result(0,"等待准备公正之剑进入自身冷却（最多2秒）");
+                        } else if(Skill(7)!=false) {
+                            if((F(4)&F(16)&Skill(7))!=true) return Result(0,"等待准备公正之剑可施放（最多2秒）");
+                            state=state with {Sent=true,SentAt=now};
+                            return Result(14,"爆发前尝试公正之剑建立异端逐除");
+                        }
+                    }
                 }
-                state=state with {Stage=RetStage.Wings};
+                state=state with {Stage=RetStage.Wings,Sent=false,SentAt=0};
             }
             if(state.Stage==RetStage.Wings) {
                 if(B(8)==false||(state.Sent&&F(18)==true)) state=state with {Stage=RetStage.Sentence,Sent=false};
                 else {
+                    if(B(28)!=true) return Result(0,"等待复仇之怒／征伐目标进入制裁之锤10码范围");
                     if(F(4)!=true||Skill(0)!=true) return Result(0,"等待复仇之怒可施放/自身冷却确认");
                     if(!state.Sent) state=state with {Sent=true,SentAt=now};
                     return Result(7,"军官：复仇之怒（含征伐）");
