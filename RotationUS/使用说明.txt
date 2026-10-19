@@ -1,4 +1,4 @@
-RotationUS 职业执行与游戏点位诊断
+﻿RotationUS 职业执行与游戏点位诊断
 
 启动
   双击 bin\Release\net9.0-windows\RotationUS.exe。
@@ -118,8 +118,16 @@ RotationUS 职业执行与游戏点位诊断
   bin\Release\net9.0-windows\RotationUS.exe --self-test
   性能检查（不发键）：RotationUS.exe --profile diagnostic-layout.json
   日志性能检查（不截图、不发键）：RotationUS.exe --log-profile
+  窗口性能检查（合成变化数据、不截图、不发键）：RotationUS.exe --presentation-profile
   uv run --with lupa python Diagnostics/verify_addon.py "D:\Game\World of Warcraft\_retail_\Interface\AddOns\HijiAddon"
   需要 .NET 9 Windows Desktop Runtime（当前电脑已具备）。
+
+大窗口刷新（2026-10-18）
+  循环启用时仍使用30毫秒定时采样与执行；惩戒、神圣自动文件日志的记录条件和内容不变。
+  大窗口字段变化仍按250毫秒间隔观察并记录，表格和像素预览最多每500毫秒绘制一次。
+  窗口日志立即进入记录队列，每250毫秒批量显示；导出包含尚未显示的日志，仍保留最近1000条。
+  缩小后暂停日志列表绘制，恢复大窗口时补齐显示。自动文件日志继续按原规则记录。
+  像素预览只为可见区域创建绘图缓冲区；远处特殊点仍可滚动查看，导出的原始截图不裁剪。
 
 旧执行入口
   RotationUS.exe --legacy 进入原程序：当前写死防战，鼠标中键/侧键切换暂停。
@@ -147,3 +155,8 @@ RotationUS 职业执行与游戏点位诊断
   旧Version=1的50点配置仅供迁移特殊点，新定位写入Version=2和CellWidth=5；旧标准点不能执行。
   更新后重启外部工具，/reload，/hiji locate on，等待203/203且连续两次位置一致，再/hiji locate off并退出定位测试。
   新增验证：uv run --with lupa python Diagnostics/verify_team_health.py "E:/Game/World of Warcraft/_retail_/Interface/AddOns/HijiAddon"
+
+2026-10-18 神圣团队自动治疗
+  本次新版构建位于 bin\raid-healing\RotationUS.exe；旧程序正在运行时不覆盖其可执行文件。
+  脱战 /reload 加载插件，关闭旧程序后使用新版。神圣团队自动绑定30组选人快捷键，小队F1～F5不变。
+  团队群疗至少4人，参考小队的美德起手、9秒推定窗口与后续治疗，具体快捷键和条件见“神圣骑士说明.md”。

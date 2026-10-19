@@ -23,7 +23,7 @@ internal static class HolyHealingWindowTests
             f[93]=f[94]=Color.Orange;window.Reset();HOLY.Inst.Reset();HOLY.Inst.Thresholds=t;HOLY.Inst.Buffs=new();
         }
         HolyHealingSample Observe(double now,bool live=true)=>window.Observe(f,t,now,live);
-        int Decide(HolyHealingSample s,HolyBuffs? buff=null)=>HOLY.Decide(f,buff??new(),t,new(Healing:s)).Key;
+        int Decide(HolyHealingSample s,HolyBuffs? buff=null)=>RaidTestFixture.Decide(f,buff??new(),t,new(Healing:s)).Key;
         int Tick(double now) {var actions=new Dictionary<int,bool>();HOLY.Inst.Process(f,new(),actions,now);return actions.Keys.SingleOrDefault();}
 
         Reset();Check(Decide(Observe(0))==8,"first ordinary injury uses normal Shock");

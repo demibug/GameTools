@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Windows.Forms;
@@ -26,7 +26,7 @@ internal static class HolyTests
         }
         // Legacy branch cases opt into healing Mastery; policy tests cover defaults.
         var automatic=new HealingThresholds(AutoAuraMastery:true,AuraMasteryHasToll:true,RaidAutoAuraMastery:true);
-        void Want(int key,string why,HolyCooldownContext? context=null) {var d=HOLY.Decide(f,buff,automatic,context);Check(d.Key==key,why+" actual="+d.Key+" "+d.Reason);}
+        void Want(int key,string why,HolyCooldownContext? context=null) {var d=RaidTestFixture.Decide(f,buff,automatic,context);Check(d.Key==key,why+" actual="+d.Key+" "+d.Reason);}
         void ShieldSetup(bool raid=false) {
             Reset(raid);F(4,false);F(12);F(13);F(21);F(22);F(31);F(92);F(95);F(97);F(98);
             F(47,false);Hp(6,.85);
@@ -36,40 +36,40 @@ internal static class HolyTests
             ShieldSetup(raid);Want(18,"safe Shield has highest priority ahead of ready Judgment, raid="+raid);
             foreach(int id in new[]{1,2,3,9,13,20,19,92,95,97,98}) {
                 foreach(var color in new[]{Color.Black,Color.Orange}) {
-                    f[id]=color;Check(HOLY.Decide(f,buff).Key!=18,"Shield requires confirmed gate"+id+", raid="+raid);
+                    f[id]=color;Check(RaidTestFixture.Decide(f,buff).Key!=18,"Shield requires confirmed gate"+id+", raid="+raid);
                 }
                 F(id);
             }
             foreach(int charges in new[]{0,1,2}) {
                 F(22,charges>0);F(13,charges>=2);
-                Check((HOLY.Decide(f,buff).Key==18)==(charges>=2),"Shield requires two Shock charges, charges="+charges+", raid="+raid);
+                Check((RaidTestFixture.Decide(f,buff).Key==18)==(charges>=2),"Shield requires two Shock charges, charges="+charges+", raid="+raid);
             }
-            f.Remove(13);Check(HOLY.Decide(f,buff).Key!=18,"missing Shock charge observation forbids Shield");F(13);
+            f.Remove(13);Check(RaidTestFixture.Decide(f,buff).Key!=18,"missing Shock charge observation forbids Shield");F(13);
             foreach(var color in new[]{Color.White,Color.Black,Color.Orange}) {
                 f[21]=color;Want(18,"Judgment cooldown no longer gates Shield, raid="+raid);
             }
             F(21);
             foreach(int id in new[]{4}) {
                 foreach(var color in new[]{Color.White,Color.Orange}) {
-                    f[id]=color;Check(HOLY.Decide(f,buff).Key!=18,"Shield requires confirmed enemy target"+id);
+                    f[id]=color;Check(RaidTestFixture.Decide(f,buff).Key!=18,"Shield requires confirmed enemy target"+id);
                 }
                 F(id,false);
             }
             foreach(var color in new[]{Color.White,Color.Black,Color.Orange}) {
                 f[11]=color;Want(18,"food observation cannot gate safe Shield, raid="+raid);
             }
-            f[41]=Color.Orange;Check(HOLY.Decide(f,buff).Key!=18,"unknown party/raid mode forbids Shield");F(41,raid);
-            Hp(6,.84);Check(HOLY.Decide(f,buff).Key!=18,"stale healthy roster cannot hide injured player");Hp(6,.85);
+            f[41]=Color.Orange;Check(RaidTestFixture.Decide(f,buff).Key!=18,"unknown party/raid mode forbids Shield");F(41,raid);
+            Hp(6,.84);Check(RaidTestFixture.Decide(f,buff).Key!=18,"stale healthy roster cannot hide injured player");Hp(6,.85);
             for(int slot=1;slot<=(raid?40:5);slot++) {
-                Member(slot,.84);Check(HOLY.Decide(f,buff).Key!=18,"any injured living member forbids Shield, slot="+slot);Member(slot,.85);
+                Member(slot,.84);Check(RaidTestFixture.Decide(f,buff).Key!=18,"any injured living member forbids Shield, slot="+slot);Member(slot,.85);
             }
             f[55]=Color.Orange;
             Check(HolyTriage.Analyze(f,raid,new()).Reliable,"one unknown member still meets healing coverage");
-            Check(HOLY.Decide(f,buff).Key!=18,"Shield demands complete health knowledge even when healing coverage is reliable");
+            Check(RaidTestFixture.Decide(f,buff).Key!=18,"Shield demands complete health knowledge even when healing coverage is reliable");
             Member(5,0);Want(18,"confirmed dead member does not forbid Shield");
             f[55]=Color.Blue;Want(18,"offline member excluded from online living roster");
             f[55]=Color.Black;Want(18,"empty member slot excluded");Member(5,.85);
-            Check(HOLY.Decide(f,buff,new(GroupLow:.95)).Key!=18,"major group injury forbids Shield even if configured healing line is met");
+            Check(RaidTestFixture.Decide(f,buff,new(GroupLow:.95)).Key!=18,"major group injury forbids Shield even if configured healing line is met");
         }
         ShieldSetup();Hp(6,.49);Skill(10);Want(5,"unsafe Shield cannot override low-health Protection");
         Reset();F(46);F(47,false);Member(2,.4);var shieldStates=new Dictionary<int,bool>();HOLY.Inst.Buffs=buff;
@@ -101,8 +101,8 @@ internal static class HolyTests
         HOLY.Inst.Process(f,b,shockStates);Check(shockStates.Count==0,"ready Shock waits for first self target confirmation");
         HOLY.Inst.Process(f,b,shockStates);Check(shockStates.Count==1&&shockStates.ContainsKey(8),"second self confirmation releases Shock instead of self Flash");
         Reset(true);Hp(6,.70);Member(1,.70);Skill(2);Skill(5);Hp(8,1);Member(2,1);
-        Want(1,"raid full-health selected target cannot receive Shock just to avoid self Flash");
-        F(4,false);F(12);Want(1,"raid hostile target retains self Flash without automatic targeting");
+        Want(201,"raid selects injured self for Shock instead of healing a full-health target");
+        F(4,false);F(12);Want(201,"raid hostile target can select injured self for Shock");
         Reset();Hp(6,.70);Member(1,.70);Skill(2);Skill(5);F(32,false);
         Want(1,"unusable Shock cannot suppress self Flash");
         f[32]=Color.Orange;Want(1,"unknown Shock usability cannot suppress self Flash");
@@ -151,7 +151,7 @@ internal static class HolyTests
         F(91,false);buff.DivinePurpose=true;Want(9,"free spender precedes target hard-cast Light");buff.DivinePurpose=false;
         Hp(7,.29);Want(11,"mana just below30 uses Flash fallback");Hp(7,.31);Want(12,"mana just above30 permits hard Light");
         foreach(int id in new[]{1,2,3,4,5,9,20}) {
-            F(id,false);Want(0,"hard Light retains combat, live/friendly/in-range target, idle and GCD gates");F(id);
+            F(id,false);Want(id is 3 or 4?202:0,"hard Light never casts at invalid target; raid may select a valid ally");F(id);
         }
         foreach(int id in new[]{26,36}) {
             foreach(var color in new[]{Color.Black,Color.Orange}) {
@@ -159,7 +159,7 @@ internal static class HolyTests
             }
             F(id);
         }
-        Hp(7,.4);Check(HOLY.Decide(f,buff,new(HolyLightMana:.50)).Key==11,"hard Light respects configured mana floor");
+        Hp(7,.4);Check(RaidTestFixture.Decide(f,buff,new(HolyLightMana:.50)).Key==11,"hard Light respects configured mana floor");
         F(30);F(40);Hp(6,.59);Want(5,"low health Protection uses existing minus action5");
         F(20,false);F(9,false);Want(5,"off-GCD Protection does not wait for GCD or current heal cast");
         Hp(6,.60);Want(0,"Protection excludes60 percent boundary");Hp(6,.61);Want(0,"Protection excludes health above60");Hp(6,.59);
@@ -187,7 +187,7 @@ internal static class HolyTests
             if(mode==3) {Skill(6);buff.HandOfDivinity=true;}
             int key=mode switch {1 or 4=>1,2 or 5=>2,3=>3,_=>0};
             Want(hp<.85&&mode!=3?key:0,$"self85 boundary mode={mode}, raid={raid}, hp={hp}");
-            Check(HOLY.Decide(f,buff,new(HealBelow:.80)).Key==0,$"self respects configured80 line mode={mode}, raid={raid}, hp={hp}");
+            Check(RaidTestFixture.Decide(f,buff,new(HealBelow:.80)).Key==0,$"self respects configured80 line mode={mode}, raid={raid}, hp={hp}");
         }
         // Check every ordinary target-healing branch at the new line in both
         // group modes, independently of the more-specific emergency self macros.
@@ -206,19 +206,19 @@ internal static class HolyTests
             Skill(2,false);Skill(5);Want(11,"single injury with Shock on cooldown falls through ready Toll to Flash");
             Hp(8,.80);Member(2,.80);Member(3,.80);Skill(2);Want(8,"ordinary two-person aoe below85 does not spend Toll");
             Hp(8,.60);Member(2,.60);Member(3,.60);Member(4,.60);
-            Check(HOLY.Decide(f,buff,automatic,new(Healing:new(new PartyTollReading(true),TollConfirmed:true))).Key==(raid?10:4),
+            Check(RaidTestFixture.Decide(f,buff,automatic,new(Healing:new(new PartyTollReading(true),TollConfirmed:true))).Key==(raid?8:4),
                 "confirmed party group injury or raid threshold spends mode-specific Toll");
             Member(4,1);Want(8,"two below70 do not meet major group threshold");
             Hp(8,.40);Member(2,.40);Member(3,.40);Want(8,"two below50 do not permit group Toll");
-            Member(4,.40);Want(raid?10:4,"three below50 permit group Toll");
+            Member(4,.40);Want(raid?8:4,"three below50 permit party Toll only");
             F(19,false);Want(8,"stale major group health without a group cannot spend Toll");F(19);
             f[54]=f[55]=Color.Orange;Want(8,"unreliable group health cannot spend Toll");Member(4,1);Member(5,1);
             F(24,false);Want(8,"group Toll on cooldown falls through to Shock");F(24);F(34,false);Want(8,"unusable group Toll falls through to Shock");
             F(34);f[24]=Color.Orange;Want(8,"unknown group Toll readiness falls through to Shock");
         }
         Reset(true);Skill(4);Skill(2);for(int slot=1;slot<=40;slot++) Member(slot,1);
-        for(int slot=1;slot<=11;slot++) Member(slot,.6);Want(8,"40-person raid needs12 below70, not just a few injured members");
-        Member(12,.6);Want(10,"40-person raid with12 below70 permits Toll");
+        for(int slot=1;slot<=11;slot++) Member(slot,.55);Want(10,"40-person raid with at least4 severe injuries permits Toll");
+        Member(12,.55);Want(10,"additional severe injuries retain raid Toll");
         // An unavailable or unknown Shock must not block confirmed Flash.
         foreach(bool raid in new[]{false,true})
         foreach(bool stationary in new[]{false,true})
@@ -256,8 +256,8 @@ internal static class HolyTests
         Member(3,.84);Want(103,"party member below85 is selected while87 target is ignored");
         Member(2,.84);Check(!HolyTriage.Analyze(f,false,new()).Aoe,"two below85 do not trigger ordinary party aoe");
         Member(4,.84);Check(HolyTriage.Analyze(f,false,new()).Aoe,"three below85 trigger ordinary party aoe");
-        Reset();Skill(2);Check(HOLY.Decide(f,buff,new(HealBelow:.65)).Key==0,"Shock uses configured healing threshold instead of hardcoded85");
-        F(5,false);Want(0,"Shock needs target healing range");Check(HOLY.Decide(f,buff).Reason.Contains("点5"),"out of range is not misreported as topped target");
+        Reset();Skill(2);Check(RaidTestFixture.Decide(f,buff,new(HealBelow:.65)).Key==0,"Shock uses configured healing threshold instead of hardcoded85");
+        F(5,false);Want(0,"Shock needs target healing range");Check(RaidTestFixture.Decide(f,buff).Reason.Contains("点5"),"out of range is not misreported as topped target");
         f[4]=Color.Orange;Want(0,"Shock waits for confirmed friendly target");
         Reset();Skill(4,false);Skill(2);Want(8,"unlearned toll skips to shock");
         Reset();Member(2,.6);Member(3,.6);Member(4,.6);Hp(8,.6);
@@ -294,9 +294,9 @@ internal static class HolyTests
         }
         Reset();Member(3,.30);Want(103,"lowest party2 selected");F(43,false);Want(0,"out of range party2 excluded");
         F(43);f[53]=Color.Blue;Want(0,"offline excluded");f[53]=Color.Orange;Want(0,"unknown excluded");Member(3,0);Want(0,"dead excluded");
-        Reset();Member(5,.2);Want(105,"party4 uses Shift F5");F(11);Want(105,"food no longer blocks party4 selection");f[11]=Color.Orange;Want(105,"unknown food no longer blocks selection");
-        Reset(true);Member(3,.2);Skill(2);Want(8,"raid current target only");F(4,false);F(12);Skill(1);Want(7,"raid hostile target judgment only");
-        F(99,false);Want(0,"out of range judgment skipped");f[99]=Color.Orange;Want(0,"unknown judgment range skipped");
+        Reset();Member(5,.2);Want(105,"party4 uses F5");F(11);Want(105,"food no longer blocks party4 selection");f[11]=Color.Orange;Want(105,"unknown food no longer blocks selection");
+        Reset(true);Member(3,.2);Skill(2);Want(203,"raid selects lowest injured member");F(4,false);F(12);Skill(1);Want(203,"raid switches from hostile target to injured member");
+        F(99,false);Want(203,"out of range Judgment does not block raid healing selection");f[99]=Color.Orange;Want(203,"unknown Judgment range does not block raid healing selection");
         Reset();Member(3,.30);F(19,false);Want(0,"no group excludes stale party candidates");
         Reset();F(47,false);F(46);Member(2,.4);Want(102,"select party1 separate from healing");
         var states=new Dictionary<int,bool>();HOLY.Inst.Buffs=buff;HOLY.Inst.Process(f,b,states);
@@ -317,7 +317,7 @@ internal static class HolyTests
         var confirmedGroup=new HolyCooldownContext(Healing:new(new PartyTollReading(true),TollConfirmed:true));
         F(29,false);F(97);Want(4,"party toll uses 0 self macro no target change",confirmedGroup);
         F(97,false);Want(4,"Virtue cooldown prevents repeat cast without a healing window",confirmedGroup);
-        F(41);Want(10,"raid toll uses semicolon on current target");F(41,false);
+        F(41);Member(5,.6);Want(10,"four confirmed raid injuries use semicolon on current target",confirmedGroup);Member(5,1);F(41,false);
         F(92);Skill(3);Want(9,"5 hp before toll");F(92,false);Skill(4,false);Skill(7);
         Member(2,.55);Member(3,.55);Member(4,.55);Hp(8,.55);Want(13,"three below60 -> wings");
         buff.Infusion=true;Skill(5);Want(13,"infusion does not indefinitely postpone needed wings");
@@ -367,7 +367,7 @@ internal static class HolyTests
         Reset();Hp(8,1);Member(2,1);Skill(3);buff.DivinePurpose=true;Hp(6,.79);F(10,false);Want(2,"self key8 accepts confirmed proc at zero holy power while moving");
         f[91]=Color.Orange;Want(2,"self proc bypasses unknown holy power");buff.DivinePurpose=null;Want(0,"unknown proc cannot grant self free heal");
         buff.DivinePurpose=true;F(3,false);Want(2,"self free heal does not require live target");
-        Reset(true);Skill(3);buff.DivinePurpose=true;Member(3,.2);Want(9,"raid proc heals selected target without switching");
+        Reset(true);Skill(3);buff.DivinePurpose=true;Member(3,.2);Want(203,"raid proc selects lower injured member");
         Reset();Member(5,.2);Skill(3);buff.DivinePurpose=true;Want(105,"external point105 does not collide with party4 selection action105");
         Reset();Hp(8,.55);Member(2,.55);Skill(6);Skill(5);Want(12,"major target gets hard Light with absent infusion and Shock cooldown");Hp(7,.2);Want(11,"low mana uses Flash when usable");
         foreach(bool? present in new bool?[]{true,false,null}) {
@@ -380,10 +380,10 @@ internal static class HolyTests
             f[97]=color;Want(11,"removed window state cannot block Flash fallback during Shock cooldown");
         }
         buff.Infusion=null;Want(11,"unknown Infusion does not block ordinary stationary Flash during Shock cooldown");
-        f[25]=Color.Orange;Want(0,"unknown Flash readiness cannot be assumed ready");Check(HOLY.Decide(f,buff).Reason.Contains("点25"),"blocked Flash identifies readiness point");
-        F(25);F(35,false);Want(0,"unusable Flash cannot cast during Shock cooldown");Check(HOLY.Decide(f,buff).Reason.Contains("点35"),"blocked Flash identifies usability point");
+        f[25]=Color.Orange;Want(0,"unknown Flash readiness cannot be assumed ready");Check(RaidTestFixture.Decide(f,buff).Reason.Contains("点25"),"blocked Flash identifies readiness point");
+        F(25);F(35,false);Want(0,"unusable Flash cannot cast during Shock cooldown");Check(RaidTestFixture.Decide(f,buff).Reason.Contains("点35"),"blocked Flash identifies usability point");
         F(35);F(10,false);Want(0,"moving without confirmed Infusion waits instead of ordinary Flash");
-        Check(HOLY.Decide(f,buff).Reason.Contains("点10"),"blocked Flash identifies movement point");
+        Check(RaidTestFixture.Decide(f,buff).Reason.Contains("点10"),"blocked Flash identifies movement point");
         foreach(int n in new[]{1,2,3,4,6,7,8,9}) {
             Reset();Skill(5);F(20+n);F(30+n);f[20+n]=Color.Orange;
             Want(11,"unknown cooldown for skill"+n+" cannot block ordinary Flash fallback");
@@ -406,7 +406,7 @@ internal static class HolyTests
         buff.Infusion=true;Skill(5);Want(11,"existing infusion consumed before Hand instant Holy Light");
         F(93,false);Want(12,"native absent infusion and actual Hand buff choose Holy Light");
         F(94,false);Want(0,"native absent Hand overrides fixed point presence");
-        Reset(true);Hp(8,.55);Member(2,.55);buff.HandOfDivinity=true;Skill(6);F(10,false);Member(3,.2);Want(12,"raid Hand heals selected target without switching to lowest member");
+        Reset(true);Hp(8,.55);Member(2,.55);buff.HandOfDivinity=true;Skill(6);F(10,false);Member(3,.2);Want(203,"raid Hand selects lowest injured member first");
         Reset();Member(2,.55);Member(3,.55);Member(4,.55);Hp(8,.55);Skill(6);Skill(7);Skill(8);F(10,false);
         buff.HandOfDivinity=true;Want(13,"major pressure can activate wings even with a Hand proc");
         buff.HandOfDivinity=false;Want(13,"no infusion and no Hand uses ready wings");
@@ -427,6 +427,7 @@ internal static class HolyTests
         Reset(true);Skill(2);Hp(8,.84);Member(2,.84);
         using(var pixels=new Bitmap(layout.ClientWidth,layout.ClientHeight)) {
             foreach(var pair in f) pixels.SetPixel(layout.Frames[pair.Key-1].X,layout.Frames[pair.Key-1].Y,pair.Value);
+            foreach(var pair in RaidTestFixture.Bars(f)) pixels.SetPixel(layout.Bars[pair.Key-1].X,layout.Bars[pair.Key-1].Y,pair.Value);
             using var sample=new Captured((Bitmap)pixels.Clone(),new Rectangle(Point.Empty,pixels.Size));
             var sent=new Dictionary<int,bool>();var game=new GameWindow(1,(IntPtr)42,"Synthetic Holy");
             var runner=new RotationExecution(()=>game.Handle,()=>false,(frames,bars)=> {
@@ -435,7 +436,9 @@ internal static class HolyTests
             var profile=ClassProfiles.Find(65)!;runner.Start(profile);
             layout.HolyThresholds=new(HealBelow:.80);runner.Tick(game,layout,sample,true,0,profile);
             Check(sent.Count==0,"execution uses saved80 line, not default85 preview threshold");
-            layout.HolyThresholds=new(HealBelow:.85);runner.Tick(game,layout,sample,true,.1,profile);
+            foreach(var pair in RaidTestFixture.Bars(f)) pixels.SetPixel(layout.Bars[pair.Key-1].X,layout.Bars[pair.Key-1].Y,pair.Value);
+            using var nextSample=new Captured((Bitmap)pixels.Clone(),new Rectangle(Point.Empty,pixels.Size));
+            layout.HolyThresholds=new(HealBelow:.85);runner.Tick(game,layout,nextSample,true,.1,profile);
             Check(sent.Count==1&&sent.ContainsKey(8),"execution adopts saved85 threshold and emits Shock decision below line");
             runner.Stop();
         }

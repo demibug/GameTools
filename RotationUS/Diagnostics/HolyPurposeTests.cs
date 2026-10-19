@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System.Drawing;
 using System.Text.Json;
 
@@ -22,7 +22,7 @@ internal static class HolyPurposeTests
             for(int slot=1;slot<=(raid?40:5);slot++) Member(slot,1);
             buff=new(){DivinePurpose=true,PurposeExpiring=true};
         }
-        int Decide()=>HOLY.Decide(f,buff).Key;
+        int Decide()=>RaidTestFixture.Decide(f,buff).Key;
         foreach(bool raid in new[]{false,true}) {
             Reset(raid);Check(Decide()==18,"zero power and zero Shock charges permit expiring shield");
             f[91]=f[92]=f[13]=Color.Orange;

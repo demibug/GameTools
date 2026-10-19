@@ -16,15 +16,17 @@ internal sealed class HOLY
     private long selectionStarted;
     private readonly HolyPressure pressure=new();
     private readonly HolyHealingWindow healingWindow=new();
+    internal RaidHealingController Raid {get;}=new();
     private HolyHealingSample? preparedHealing;
     private double preparedAt;
     internal HolySacrificeProtection Sacrifice {get;}=new();
     internal HolyHealingSample HealingSample=>healingWindow.Current;
-    internal HolyHealingSample ObserveHealing(Dictionary<int,Color> frames,HealingThresholds t,double now,bool live=true,bool executing=true,bool foreground=true)
+    internal HolyHealingSample ObserveHealing(Dictionary<int,Color> frames,HealingThresholds t,double now,bool live=true,bool executing=true,bool foreground=true,IReadOnlyDictionary<int,Color>? raidBars=null)
     {
         preparedAt=now;
         if(live&&executing&&!foreground) Sacrifice.Reset("游戏不在前台：联动已清除");
         else Sacrifice.Observe(frames,now,live,executing);
+        Raid.Observe(frames,raidBars,t,now,live&&(!executing||foreground));
         return preparedHealing=healingWindow.Observe(frames,t,now,live);
     }
     internal PartyRosterSnapshot? PartyRoster {get;private set;}
@@ -40,7 +42,7 @@ internal sealed class HOLY
         if(value is null || RunicPower?.Roster.Matches(value)!=true) RunicPower=null;
     }
     private void ResetSelection() {pendingSlot=confirmations=0;reevaluateSelection=false;}
-    internal void Reset() {ResetSelection();bloodReducedMask=0;pressure.Reset();healingWindow.Reset();preparedHealing=null;Sacrifice.Reset();}
+    internal void Reset() {ResetSelection();bloodReducedMask=0;pressure.Reset();healingWindow.Reset();preparedHealing=null;Sacrifice.Reset();Raid.Reset();}
     public void Process(Dictionary<int,Color> frames,Dictionary<int,Color> bars,Dictionary<int,bool> states)=>Process(frames,bars,states,null);
     internal void Process(Dictionary<int,Color> frames,Dictionary<int,Color> bars,Dictionary<int,bool> states,double? observationTime)
     {
@@ -48,6 +50,14 @@ internal sealed class HOLY
         double now=observationTime??(double)System.Diagnostics.Stopwatch.GetTimestamp()/System.Diagnostics.Stopwatch.Frequency;
         double sacrificeAt=observationTime??(preparedHealing is not null?preparedAt:now);
         if(observationTime is not null||preparedHealing is null) Sacrifice.Observe(frames,sacrificeAt);
+        if(F(41)==true) {
+            ResetSelection();bloodReducedMask=0;pressure.Reset();healingWindow.Reset();preparedHealing=null;
+            LastDecision=Raid.Process(frames,bars,Buffs,Thresholds,Sacrifice.Current,sacrificeAt);
+            if(LastDecision.Key!=0) states[LastDecision.Key]=true;
+            if(LastDecision.Key==5) Sacrifice.Requested(sacrificeAt);
+            return;
+        }
+        Raid.Reset();
         var observed=observationTime is not null?healingWindow.Observe(frames,Thresholds,now):
             preparedHealing??healingWindow.Observe(frames,Thresholds,now);
         preparedHealing=null;
@@ -84,7 +94,7 @@ internal sealed class HOLY
                 if(System.Diagnostics.Stopwatch.GetElapsedTime(selectionStarted).TotalSeconds<2) {
                     LastDecision=new(0,"等待目标切换确认");return;
                 }
-                ResetSelection();LastDecision=new(0,"选人未确认，请检查 Shift+F1～F5 绑定");return;
+                ResetSelection();LastDecision=new(0,"选人未确认，请检查 F1～F5 绑定");return;
             }
         }
         LastDecision=decision;
@@ -97,10 +107,12 @@ internal sealed class HOLY
             pressure.Requested(LastDecision.Key,frames,Thresholds,now);
         }
     }
-    internal static HolyDecision Decide(Dictionary<int,Color> frames,HolyBuffs buff,HealingThresholds? thresholds=null,HolyCooldownContext? cooldowns=null,PartyRosterSnapshot? party=null,PartyRunicPower? power=null,int pendingSelection=0)
+    internal static HolyDecision Decide(Dictionary<int,Color> frames,HolyBuffs buff,HealingThresholds? thresholds=null,HolyCooldownContext? cooldowns=null,PartyRosterSnapshot? party=null,PartyRunicPower? power=null,int pendingSelection=0,RaidRosterSnapshot? raidRoster=null,RaidHealingSample? raidHealing=null)
     {
         var t=thresholds??new();
         var context=cooldowns??new();
+        if(frames.TryGetValue(41,out var mode)&&FuryBuffs.Boolean(mode)==true)
+            return RaidHolyPolicy.Decide(frames,buff,t,context,raidRoster,raidHealing,pendingSelection);
         bool? F(int id)=>frames.TryGetValue(id,out var c)?FuryBuffs.Boolean(c):null;
         double? P(int id)=>frames.TryGetValue(id,out var c)&&c.R==c.G&&c.G==c.B?c.R/255.0:null;
         bool Skill(int n)=>F(20+n)==true&&F(30+n)==true;

@@ -24,7 +24,7 @@ internal static class EntryPoint
     [STAThread]
     private static int Main(string[] args)
     {
-        bool consoleMode = args.Length > 0 && args[0] is "--self-test" or "--ui-smoke" or "--ui-position-smoke" or "--ui-picker-smoke" or "--ui-floating-smoke" or "--ui-ret-smoke" or "--ui-arms-smoke" or "--ui-holy-smoke" or "--ui-party-smoke" or "--profile" or "--log-profile" or "--legacy";
+        bool consoleMode = args.Length > 0 && args[0] is "--self-test" or "--ui-smoke" or "--ui-position-smoke" or "--ui-picker-smoke" or "--ui-floating-smoke" or "--ui-ret-smoke" or "--ui-arms-smoke" or "--ui-holy-smoke" or "--ui-party-smoke" or "--profile" or "--log-profile" or "--presentation-profile" or "--legacy";
         try
         {
             if (consoleMode) EnsureConsole();
@@ -38,6 +38,7 @@ internal static class EntryPoint
             if (args.SequenceEqual(new[] { "--self-test" })) { DiagnosticTests.Run(); return 0; }
             if (args.Length == 2 && args[0] == "--profile") { PerformanceProbe.Run(args[1]); return 0; }
             if (args.SequenceEqual(new[] { "--log-profile" })) { PerformanceProbe.RunLogs(); return 0; }
+            if (args.SequenceEqual(new[] { "--presentation-profile" })) { PerformanceProbe.RunPresentation(); return 0; }
             if (args.Length == 2 && args[0] == "--ui-smoke") { DiagnosticTests.Render(args[1]); return 0; }
             if (args.Length == 2 && args[0] == "--ui-position-smoke") { DiagnosticTests.Render(args[1], true); return 0; }
             if (args.Length == 2 && args[0] == "--ui-picker-smoke") { DiagnosticTests.RenderPicker(args[1]); return 0; }

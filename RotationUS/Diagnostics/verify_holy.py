@@ -75,7 +75,7 @@ C_Item.GetItemCooldown=function(id)
     if id==failedItem then return itemStart,itemDuration,itemFlag end
     return savedItemCooldown(id)
 end
-for _,entry in ipairs({{16,5512},{17,211879}}) do
+for _,entry in ipairs({{16,5512},{17,244838}}) do
     local index,id=entry[1],entry[2];failedItem=id
     for _,flag in ipairs({true,1}) do
         itemFlag,itemCount,itemStart,itemDuration=flag,1,0,0

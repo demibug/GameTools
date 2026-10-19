@@ -153,10 +153,11 @@ internal static class HolyTriage
             if(hp.Percent<.60) wingsSevere++;if(hp.Percent<.70) wingsLow++;
         }
         bool reliable=alive>0&&(double)alive/(alive+unknown)>=t.MinimumCoverage;
-        bool major=reliable&&(low>=(raid?Math.Max(MinimumGroupMembers,(int)Math.Ceiling(alive*t.RaidLowFraction)):MinimumGroupMembers)||critical>=(raid?Math.Max(MinimumGroupMembers,(int)Math.Ceiling(alive*t.RaidCriticalFraction)):MinimumGroupMembers));
-        // The relaxed Toll thresholds apply to parties; raid population scaling is retained.
+        bool major=reliable&&(low>=(raid?RaidInjury.Minimum:MinimumGroupMembers)||critical>=(raid?RaidInjury.Minimum:MinimumGroupMembers));
+        // Raid execution uses its range-aware RaidInjury and confirmation window.
+        // Keep the party thresholds and this common health-only summary separate.
         bool toll=reliable&&(raid?major:tollLow>=MinimumGroupMembers||tollCritical>=MinimumGroupMembers);
-        return new(alive,low,critical,injured,major,reliable&&injured>=(raid?Math.Max(MinimumGroupMembers,(int)Math.Ceiling(alive*.20)):MinimumGroupMembers),reliable,unknown,toll,urgent,
+        return new(alive,low,critical,injured,major,reliable&&injured>=(raid?RaidInjury.Minimum:MinimumGroupMembers),reliable,unknown,toll,urgent,
             !raid&&reliable&&wingsSevere>=MinimumGroupMembers,!raid&&reliable&&wingsLow>=MinimumGroupMembers);
     }
 }

@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System.Drawing;
 
 namespace RotationUS.Diagnostics;
@@ -25,14 +25,14 @@ internal static class HolyPolicyTests
             settings=new();HOLY.Inst.Reset();
         }
         void Want(int key,string message,HolyCooldownContext? context=null) {
-            var d=HOLY.Decide(frames,buff,settings,context);
+            var d=RaidTestFixture.Decide(frames,buff,settings,context);
             Check(d.Key==key,message+" actual="+d.Key+" "+d.Reason);
         }
-        void Group(double hp=.4) {Hp(8,hp);Member(2,hp);Member(3,hp);Member(4,hp);}
+        void Group(double hp=.4) {Hp(8,hp);Member(2,hp);Member(3,hp);Member(4,hp);if(FuryBuffs.Boolean(frames[41])==true) Member(5,hp);}
         int Tick(double time) {
             HOLY.Inst.Buffs=buff;HOLY.Inst.Thresholds=settings;
             var actions=new Dictionary<int,bool>();
-            HOLY.Inst.Process(frames,new(),actions,time);
+            HOLY.Inst.Process(frames,FuryBuffs.Boolean(frames[41])==true?RaidTestFixture.Bars(frames):new(),actions,time);
             Check(actions.Count<=1,"at most one emitted action per observation");
             return actions.Count==0?0:actions.Keys.Single();
         }
@@ -52,7 +52,7 @@ internal static class HolyPolicyTests
         Reset();Hp(6,.8);Member(1,.8);Member(3,.1);F(43,false);Hp(8,1);Member(2,1);Skill(3);F(91);
         Want(2,"out-of-range critical ally cannot suppress possible self healing");
         Reset(true);Hp(6,.8);Member(1,.8);Member(3,.1);Hp(8,1);Member(2,1);Skill(3);F(91);
-        Want(2,"raid does not invent a cast route to an unselected injured member");
+        Want(203,"raid selects the unselected critical member before ordinary self healing");
 
         foreach(int spell in new[]{2,3,5,6}) {
             Reset();Hp(8,.1);Member(2,.1);Member(3,.8);Skill(9);Skill(spell);F(91);
@@ -107,7 +107,7 @@ internal static class HolyPolicyTests
         Reset(true);Group(.75);Skill(4);Want(0,"relaxed party threshold not applied to forty-person raid");
         Reset(true);Hp(8,.1);Member(2,.1);Member(3,.1);Skill(4);F(91);F(92);
         Want(0,"two imminent deaths in a large raid cannot enable group Toll");
-        Member(4,.1);Want(10,"three imminent deaths in a large raid may bypass population and overflow gates");
+        Member(4,.1);Want(0,"three critical members cannot trigger raid group healing");Member(5,.1);Want(10,"four critical members permit emergency raid Toll");
 
         Reset();Hp(8,1);Member(2,1);F(4,false);F(12);F(47,false);F(91);F(92);F(95);F(97);F(98);Skill(1);
         Want(0,"capped Holy Power waits without two Shock charges");
@@ -239,7 +239,7 @@ internal static class HolyPolicyTests
         F(10);Skill(2);Want(8,"standing ready Shock precedes hard-cast fallback at cap");
         Hp(8,1);Member(2,1);F(4,false);F(12);frames[95]=Color.Orange;
         Want(0,"healthy party cannot spam capped damage when range unknown");
-        Check(HOLY.Decide(frames,buff).Reason.Contains("点95"),"capped damage wait identifies missing melee range");
+        Check(RaidTestFixture.Decide(frames,buff).Reason.Contains("点95"),"capped damage wait identifies missing melee range");
 
         {
             var layout=new DiagnosticLayout();frames[93]=frames[94]=Color.Orange;

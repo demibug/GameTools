@@ -320,6 +320,15 @@ internal static class DiagnosticTests
             "UI throttling preserves every fresh execution sample while reducing 40 displays to 5");
         Check(!schedule.Due(2, visible: false) && schedule.Due(2), "minimized UI skips presentation and restores immediately");
         schedule.Reset(); Check(schedule.Due(0), "layout or mode change forces an immediate display");
+        var observationSchedule = new PresentationSchedule();
+        var visualSchedule = new PresentationSchedule(.5);
+        int observations = 0, paints = 0;
+        for (int i=0;i<40;i++) if(observationSchedule.Due(i*.03)) {
+            observations++;
+            if(visualSchedule.Due(i*.03)) paints++;
+        }
+        Check(observations==5 && paints==3,"visual throttling keeps all diagnostic observation ticks");
+        count += PresentationTests.Run();
 
         int switchedExecutions = 0;
         var switchingRunner = new RotationExecution(() => game.Handle, () => false, (_, _) => switchedExecutions++);
@@ -409,6 +418,7 @@ internal static class DiagnosticTests
         count += HolyGroupPolicyTests.Run();
         count += HolyPriorityTests.Run();
         count += HolyHealingWindowTests.Run();
+        count += RaidHealingTests.Run();
         count += HolySacrificeTests.Run();
         count += HolyShieldLog.RunTests();
         count += ExpandedProtocolTests.Run();

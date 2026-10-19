@@ -7,7 +7,7 @@ namespace RotationUS.Diagnostics;
 internal sealed class PartyRosterPanel : UserControl
 {
     private readonly Label status=new() {Dock=DockStyle.Top,Height=48,Padding=new Padding(8),AutoEllipsis=true};
-    internal readonly DataGridView Members=new() {Dock=DockStyle.Fill,ReadOnly=true,AllowUserToAddRows=false,
+    internal readonly DataGridView Members=new BufferedDataGridView() {Dock=DockStyle.Fill,ReadOnly=true,AllowUserToAddRows=false,
         AllowUserToDeleteRows=false,AllowUserToResizeRows=false,RowHeadersVisible=false,AutoSizeColumnsMode=DataGridViewAutoSizeColumnsMode.Fill,
         BackgroundColor=Color.White,BorderStyle=BorderStyle.None,SelectionMode=DataGridViewSelectionMode.FullRowSelect,MultiSelect=false};
     internal PartyRosterPanel()
@@ -45,7 +45,8 @@ internal sealed class PartyRosterPanel : UserControl
                 occupied?RoleName(m!.AssignedRole):"—",recognition,validity,hp.Percent is {} h?$"{h:P0}":hp.Status==TeamHealthStatus.Offline?"离线":"—",
                 m?.IsBloodTank==true?enough==true?"≥45（实时）":enough==false?"<45（实时）":"未知／已失效":"—",treatment};
             for(int j=0;j<values.Length;j++) if(!Equals(row.Cells[j].Value,values[j])) row.Cells[j].Value=values[j];
-            row.DefaultCellStyle.BackColor=reduced?Color.FromArgb(255,244,218):m?.Role==1?Color.FromArgb(227,242,253):Color.White;
+            var background=reduced?Color.FromArgb(255,244,218):m?.Role==1?Color.FromArgb(227,242,253):Color.White;
+            if(row.DefaultCellStyle.BackColor!=background) row.DefaultCellStyle.BackColor=background;
         }
     }
     internal static string RoleName(int role)=>role switch {1=>"坦克",2=>"治疗",3=>"输出",_=>"未知"};

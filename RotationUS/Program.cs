@@ -473,8 +473,10 @@ class Program
         profile.Process(frames, bars, dictState);
         if (profile.SpecId == 65)
         {
-            if (HOLY.Inst.LastDecision.Key is >= 101 and <= 105)
-                SimulateShiftKeyPress((byte)(0x70 + HOLY.Inst.LastDecision.Key - 101));
+            if (RotationUS.Diagnostics.RaidTargetKeys.IsSelection(HOLY.Inst.LastDecision.Key))
+                SimulateRaidTargetPress(HOLY.Inst.LastDecision.Key - RotationUS.Diagnostics.RaidTargetKeys.ActionStart);
+            else if (HOLY.Inst.LastDecision.Key is >= 101 and <= 105)
+                SimulateKeyPress((byte)(0x70 + HOLY.Inst.LastDecision.Key - 101));
             else CheckState(dictState);
             return;
         }
@@ -630,6 +632,29 @@ class Program
         inputs[1].u.ki.dwFlags = KEYEVENTF_KEYUP;
 
         SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+    }
+
+    private static void SimulateRaidTargetPress(int slot)
+    {
+        var sequence = RotationUS.Diagnostics.RaidTargetKeys.Sequence(slot);
+        var inputs = new INPUT[sequence.Length];
+        for (int i = 0; i < sequence.Length; i++) {
+            inputs[i].type = INPUT_KEYBOARD;
+            inputs[i].u.ki.wVk = sequence[i].Key;
+            inputs[i].u.ki.dwFlags = sequence[i].Up ? KEYEVENTF_KEYUP : KEYEVENTF_KEYDOWN;
+        }
+        uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(INPUT)));
+        if (sent != inputs.Length) {
+            // A partial insertion must never leave our modifier held down.
+            var release = new INPUT[2];
+            for (int i = 0; i < 2; i++) {
+                release[i].type = INPUT_KEYBOARD;
+                release[i].u.ki.wVk = sequence[i == 0 ? 1 : 0].Key;
+                release[i].u.ki.dwFlags = KEYEVENTF_KEYUP;
+            }
+            SendInput(2, release, Marshal.SizeOf(typeof(INPUT)));
+            HOLY.Inst.Raid.Reset();
+        }
     }
 
     private static void ReleaseShiftKey()

@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System.Drawing;
 
 namespace RotationUS.Diagnostics;
@@ -25,9 +25,9 @@ internal static class HolyGroupPolicyTests
             foreach(int spell in new[]{2,4,7,8,9}) Skill(spell);
             HOLY.Inst.Reset();HOLY.Inst.Thresholds=t;HOLY.Inst.Buffs=buff;
         }
-        int Decide(HolyCooldownContext? context=null)=>HOLY.Decide(f,buff,t,context??confirmed).Key;
+        int Decide(HolyCooldownContext? context=null)=>RaidTestFixture.Decide(f,buff,t,context??confirmed).Key;
         int Tick(double now) {
-            var actions=new Dictionary<int,bool>();HOLY.Inst.Process(f,new(),actions,now);
+            var actions=new Dictionary<int,bool>();HOLY.Inst.Process(f,FuryBuffs.Boolean(f[41])==true?RaidTestFixture.Bars(f):new(),actions,now);
             Check(actions.Count<=1,"one action per capture");return actions.Keys.SingleOrDefault();
         }
 
@@ -38,8 +38,8 @@ internal static class HolyGroupPolicyTests
             Check(Decide(confirmed with{Sustained=true})==8,"worsening cannot bypass three-member minimum");
             var group=HolyTriage.Analyze(f,raid,t);
             Check(!group.Aoe&&!group.Major&&!group.Toll,"two-member group flags stay false");
-            Reset(raid,3,hp);
-            Check(Decide()==15,"three injuries open Virtue including emergency damage");
+            Reset(raid,raid?4:3,hp);
+            Check(Decide()==15,"mode-specific minimum opens Virtue including emergency damage");
         }
 
         foreach(bool raid in new[]{false,true}) {
@@ -47,39 +47,39 @@ internal static class HolyGroupPolicyTests
             // Each unavailable observation must fall through in the same decision.
             foreach(int id in new[]{29,39})
             foreach(var color in new[]{Color.Black,Color.Orange}) {
-                Reset(raid,3,.55);f[id]=color;
+                Reset(raid,raid?4:3,.55);f[id]=color;
                 Check(Decide()==toll,"unavailable or unknown Virtue never holds ready Toll");
                 Skill(4,false);Check(Decide()==13,"unavailable Virtue never holds group Wings");
                 Skill(7,false);Check(Decide()==14,"unavailable Virtue never holds group Mastery");
                 Skill(8,false);Check(Decide()==8,"unavailable Virtue never holds direct healing");
             }
-            Reset(raid,3,.55);
+            Reset(raid,raid?4:3,.55);
             Check(Decide(confirmed with{ThrottledKeys=new HashSet<int>{15}})==toll,"Virtue repeat throttle does not hold other cooldowns");
             Skill(2,false);Check(Decide()==toll,"no executable direct follow-up skips Virtue without holding Toll");
 
-            Reset(raid,3,.55);Skill(4,false);
+            Reset(raid,raid?4:3,.55);Skill(4,false);
             Check(Decide()==15,"Virtue precedes group Wings");
             Skill(7,false);Check(Decide()==15,"Virtue precedes group Mastery");
-            Reset(raid,3,.8);
+            Reset(raid,raid?4:3,.8);
             Check(Decide(confirmed with{Sustained=true})==15,"Virtue precedes sustained-pressure Wings");
 
-            Reset(raid,3,.1);F(91);F(92);
-            Check(Decide()==15,"three critical members open Virtue even at power cap");
+            Reset(raid,raid?4:3,.1);F(91);F(92);
+            Check(Decide()==15,"mode-specific critical minimum opens Virtue even at power cap");
             Skill(4,false);Check(Decide()==15,"Virtue precedes emergency Mastery when Toll unavailable");
             Skill(9,false);Check(Decide()==14,"unavailable Virtue falls through to emergency Mastery");
             foreach(int id in new[]{29,39})
             foreach(var color in new[]{Color.Black,Color.Orange}) {
-                Reset(raid,3,.1);F(91);F(92);f[id]=color;
+                Reset(raid,raid?4:3,.1);F(91);F(92);f[id]=color;
                 Check(Decide()==toll,"unavailable or unknown Virtue immediately falls through to emergency Toll");
                 Skill(4,false);Check(Decide()==14,"unavailable or unknown Virtue immediately falls through to emergency Mastery");
             }
-            Reset(raid,3,.1);Skill(2,false);
+            Reset(raid,raid?4:3,.1);Skill(2,false);
             Check(Decide()==toll,"no executable follow-up does not delay emergency Toll for Virtue");
-            Reset(raid,3,.1);
+            Reset(raid,raid?4:3,.1);
             Check(Decide(confirmed with{ThrottledKeys=new HashSet<int>{15}})==toll,"Virtue repeat throttle permits emergency Toll immediately");
             F(3,false);F(4,false);F(5,false);F(47,false);Skill(4,false);
             Check(Decide()==14,"no valid Virtue recipient immediately permits self emergency Mastery");
-            Reset(raid,3,.75);Hp(8,.1);Member(2,.1);
+            Reset(raid,raid?4:3,.75);Hp(8,.1);Member(2,.1);
             Check(Decide()==15,"one critical and two ordinary injured members open Virtue");
             Hp(6,.1);Member(1,.1);Member(4,1);
             Check(Decide()==15,"critical self with three injured members opens Virtue before self rescue");
@@ -90,36 +90,36 @@ internal static class HolyGroupPolicyTests
                 Skill(7,false);Check(Decide()==11,"one or two critical members cannot trigger Mastery through single rescue pressure");
             }
 
-            Reset(raid,3,.55);
+            Reset(raid,raid?4:3,.55);
             Check(Tick(0)==15,"production starts with Virtue");
             F(29,false);F(20,false);Check(Tick(.1)==0,"Virtue follow-up respects actual GCD");
             F(20);Check(Tick(.2)==toll,"next ready GCD follows Virtue with Toll without waiting");
-            Reset(raid,3,.55);Check(Tick(0)==15,"recovery sequence starts with Virtue");
-            F(29,false);Hp(8,1);for(int slot=2;slot<=4;slot++) Member(slot,1);
+            Reset(raid,raid?4:3,.55);Check(Tick(0)==15,"recovery sequence starts with Virtue");
+            F(29,false);Hp(8,1);for(int slot=2;slot<=(raid?5:4);slot++) Member(slot,1);
             Check(Tick(.1)==0,"recovery after Virtue cancels obsolete group cooldown demand");
-            Reset(raid,3,.55);Check(Tick(0)==15,"two-injury recovery sequence starts with Virtue");
+            Reset(raid,raid?4:3,.55);Check(Tick(0)==15,"two-injury recovery sequence starts with Virtue");
             F(29,false);Member(4,1);
             Check(Tick(.1)==8,"dropping to two injuries after Virtue continues direct healing");
-            Reset(raid,3,.1);F(91);F(92);
+            Reset(raid,raid?4:3,.1);F(91);F(92);
             Check(Tick(0)==15,"production emergency starts with Virtue");
             F(29,false);F(20,false);Check(Tick(.1)==0,"emergency follow-up respects actual GCD");
             F(20);Check(Tick(.2)==toll,"emergency Toll follows Virtue at next ready GCD");
             Skill(4,false);Check(Tick(.3)==14,"persistent emergency can follow with Mastery without waiting for Virtue");
         }
 
-        // Large raids retain proportional requirements instead of collapsing to three.
+        // Large raids use the same fixed four-person minimum, including emergencies.
         Reset(true,3,.4,40);Check(Decide()==8,"three severe of40 do not meet raid thresholds");
         for(int slot=2;slot<=9;slot++) Member(slot,.4);
         Check(Decide()==15,"eight below50 in40 open Virtue");
         Skill(9,false);Check(Decide()==10,"eight below50 in40 permit raid Toll");
-        Reset(true,3,.1,40);Check(Decide()==15,"three critical in40 open Virtue before emergency raid Toll");
+        Reset(true,3,.1,40);Check(Decide()==8,"three critical in40 stay single-target");Member(5,.1);Check(Decide()==15,"four critical in40 open Virtue");
         Skill(9,false);Check(Decide()==10,"unavailable Virtue preserves raid emergency Toll exception");
         Reset(false,3,.55);f[54]=f[55]=Color.Orange;
         Check(Decide()==8,"insufficient health coverage cannot open group healing");
         Reset(false,3,.55);Skill(9,false);Skill(7,false);Skill(8,false);F(44,false);
         Check(Decide()==8,"party Toll still needs three reachable injured members");
         foreach(bool raid in new[]{false,true}) {
-            Reset(raid,3,.1);Hp(6,.1);Member(1,.1);Member(4,1);Skill(3);F(91);
+            Reset(raid,raid?4:3,.1);Hp(6,.1);Member(1,.1);Member(4,1);Skill(3);F(91);
             Check(Decide()==15,"critical self with available spender still opens group Virtue");
             Skill(9,false);Check(Decide()==(raid?10:4),"emergency group Toll still precedes direct self spender");
             Skill(4,false);Check(Decide()==14,"emergency group Mastery still precedes direct self spender");
@@ -159,10 +159,10 @@ internal static class HolyGroupPolicyTests
         Tick(0);Hp(8,.65);for(int slot=2;slot<=4;slot++) Member(slot,.65);f[55]=Color.Orange;
         Check(Tick(2.1)==8,"unknown member prevents trend confirmation for Wings below70");
 
-        // Raid group thresholds remain unchanged, while single rescue is removed
+        // Raid uses four-person gates, while single rescue is removed
         // in both modes, including self rescue with no instant spell available.
         Reset(true,3,.65);Skill(9,false);Skill(4,false);Skill(8,false);
-        Check(Decide()==13,"raid proportional severe-pressure Wings unchanged");
+        Check(Decide()==8,"three injured raid members do not trigger Wings");
         foreach(bool raid in new[]{false,true}) {
             Reset(raid,1,.1);Hp(6,.1);Member(1,.1);Member(2,1);F(46);F(47,false);
             Skill(9,false);Skill(4,false);Skill(2,false);Skill(5);

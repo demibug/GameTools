@@ -6,6 +6,35 @@ namespace RotationUS.Diagnostics;
 
 internal static class PerformanceProbe
 {
+    internal static void RunPresentation()
+    {
+        foreach (bool tall in new[] { false, true })
+        {
+            using var pattern = DiagnosticTests.Pattern(1);
+            var layout = Calibration.Find(pattern, new Size(1600, 900));
+            layout.SpecId = 65;
+            layout.SpecialPoints["holy_purpose"] = new() { Enabled = true,
+                Point = new(900, tall ? 850 : 8), ReferenceColor = new(120,120,120), Comparison = "expiring" };
+            using var image = new Bitmap(1000, tall ? 860 : 20);
+            image.SetPixel(layout.Markers[1].X, layout.Markers[1].Y, ClassProfiles.Encode(65,2));
+            string directory = Path.Combine(Path.GetTempPath(), "RotationUS-presentation-" + Guid.NewGuid().ToString("N"));
+            using var form = new DiagnosticForm(false, new SavedLogStore(directory), new ProfileLayouts(directory));
+            form.ShowSynthetic(layout, image);
+            form.FreezeForTesting();
+            using var rendered = new Bitmap(form.Width,form.Height);
+            form.DrawToBitmap(rendered,new Rectangle(Point.Empty,rendered.Size));
+            form.ProfileLogChurn(1000,true);
+            int sequence = 0;
+            Measure(tall ? "UI changing sample + paint: distant special point" : "UI changing sample + paint: top strip", () => {
+                int value = ++sequence % 200 + 30;
+                foreach (var point in layout.Frames.Concat(layout.Bars)) image.SetPixel(point.X,point.Y,Color.FromArgb(value,value,value));
+                form.ProfilePresentation(layout,image);
+                // Both implementations include a full log-list presentation in this workload.
+                form.ProfileLogChurn(8);
+                form.DrawToBitmap(rendered,new Rectangle(Point.Empty,rendered.Size));
+            });
+        }
+    }
     internal static void RunLogs()
     {
         var isolatedLogs = new SavedLogStore(Path.Combine(Path.GetTempPath(), "RotationUS-log-profile-" + Guid.NewGuid().ToString("N")));

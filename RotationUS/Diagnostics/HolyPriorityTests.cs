@@ -1,4 +1,4 @@
-#nullable enable
+﻿#nullable enable
 using System.Drawing;
 
 namespace RotationUS.Diagnostics;
@@ -37,7 +37,7 @@ internal static class HolyPriorityTests
                 f[13]=charges==2?Color.White:Color.Black;
                 f[91]=power>=3?Color.White:Color.Black;f[92]=power==5?Color.White:Color.Black;
                 var buff=new HolyBuffs {Infusion=infusion,HandOfDivinity=hand,DivinePurpose=free};
-                keys.Add(Spell(HOLY.Decide(f,buff).Key));
+                keys.Add(Spell(RaidTestFixture.Decide(f,buff).Key));
             }
             bool selfRescue=hp<.2&&(power>=3||free);
             if(selfRescue) Check(keys[1]==9,"critical self spends available Holy Power before other direct healing");
@@ -49,29 +49,29 @@ internal static class HolyPriorityTests
             var f=Frame(true,raid,.15);Skill(f,2);Skill(f,3);Skill(f,5);
             f[13]=f[91]=Color.White;
             var buff=new HolyBuffs {Infusion=true,DivinePurpose=false};
-            Check(HOLY.Decide(f,buff).Key==2,"self rescue spends three HP ahead of two-charge Shock and infused Flash");
+            Check(RaidTestFixture.Decide(f,buff).Key==2,"self rescue spends three HP ahead of two-charge Shock and infused Flash");
             foreach(int id in new[]{23,33}) {
                 foreach(var color in new[]{Color.Black,Color.Orange}) {
                     f[id]=color;
-                    Check(HOLY.Decide(f,buff).Key==8,"unavailable or unknown self spender immediately falls back to Shock");
+                    Check(RaidTestFixture.Decide(f,buff).Key==8,"unavailable or unknown self spender immediately falls back to Shock");
                 }
                 f[id]=Color.White;
             }
-            f[91]=Color.Black;Check(HOLY.Decide(f,buff).Key==8,"insufficient power uses another immediate self heal");
-            f[91]=Color.Orange;Check(HOLY.Decide(f,buff).Key==8,"unknown power cannot authorize self spender");
-            buff.DivinePurpose=true;Check(HOLY.Decide(f,buff).Key==2,"confirmed free proc authorizes self spender with unknown power");
+            f[91]=Color.Black;Check(RaidTestFixture.Decide(f,buff).Key==8,"insufficient power uses another immediate self heal");
+            f[91]=Color.Orange;Check(RaidTestFixture.Decide(f,buff).Key==8,"unknown power cannot authorize self spender");
+            buff.DivinePurpose=true;Check(RaidTestFixture.Decide(f,buff).Key==2,"confirmed free proc authorizes self spender with unknown power");
             f[3]=f[4]=f[5]=f[46]=Color.Black;
-            Check(HOLY.Decide(f,buff).Key==2,"self spender macro needs no friendly target selection");
+            Check(RaidTestFixture.Decide(f,buff).Key==2,"self spender macro needs no friendly target selection");
         }
         foreach(bool self in new[]{false,true}) {
             var f=Frame(self,false,.70);Skill(f,6);f[10]=Color.Black;
             var buff=new HolyBuffs {Infusion=false,HandOfDivinity=true};
-            Check(HOLY.Decide(f,buff).Key==0,"moving with ordinary injury preserves Hand instead of spending it merely because it exists");
+            Check(RaidTestFixture.Decide(f,buff).Key==0,"moving with ordinary injury preserves Hand instead of spending it merely because it exists");
             Skill(f,9);f[53]=Color.FromArgb(179,255,0);
-            Check(HOLY.Decide(f,buff).Key!=15,"reserved Hand alone cannot authorize Virtue without executable follow-up");
+            Check(RaidTestFixture.Decide(f,buff).Key!=15,"reserved Hand alone cannot authorize Virtue without executable follow-up");
             f=Frame(self,false,.55);Skill(f,6);f[10]=Color.Black;
-            Check(Spell(HOLY.Decide(f,buff).Key)==12,"major injury permits Hand while moving");
-            Check(HOLY.Decide(f,buff,new(Major:.50)).Key==0,"Hand follows configured major-injury threshold");
+            Check(Spell(RaidTestFixture.Decide(f,buff).Key)==12,"major injury permits Hand while moving");
+            Check(RaidTestFixture.Decide(f,buff,new(Major:.50)).Key==0,"Hand follows configured major-injury threshold");
         }
         // Group cooldowns must not be preempted solely by an early self macro.
         foreach(int cooldown in new[]{4,9}) {
@@ -79,7 +79,7 @@ internal static class HolyPriorityTests
             foreach(bool self in new[]{false,true}) {
                 var f=Frame(self,false,.70);f[53]=f[54]=Color.FromArgb(191,255,0);
                 Skill(f,cooldown);Skill(f,5);
-                keys.Add(HOLY.Decide(f,new(){Infusion=true},cooldowns:new(Healing:new(new PartyTollReading(true),TollConfirmed:true))).Key);
+                keys.Add(RaidTestFixture.Decide(f,new(){Infusion=true},cooldowns:new(Healing:new(new PartyTollReading(true),TollConfirmed:true))).Key);
             }
             Check(keys.All(key=>key==(cooldown==4?4:15)),"same group cooldown priority for self and ally");
         }

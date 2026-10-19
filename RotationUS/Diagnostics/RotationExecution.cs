@@ -45,10 +45,10 @@ internal sealed class RotationExecution
         profile ??= ClassProfiles.Protection;
         if (profile.SpecId != runningSpec || (layout.SpecId != 0 && layout.SpecId != profile.SpecId))
         { Stop(); return "职业 / 专精变化，执行已关闭"; }
-        if (!live) { CJQ.Inst.Cancel(); if(profile.SpecId==65) HOLY.Inst.Sacrifice.Reset("采样失效：联动已清除"); return "执行等待有效职业数据 / 心跳"; }
-        if (foreground() != game.Handle) { CJQ.Inst.Cancel(); if(profile.SpecId==65) HOLY.Inst.Sacrifice.Reset("游戏不在前台：联动已清除"); return "执行等待游戏处于前台"; }
+        if (!live) { CJQ.Inst.Cancel(); if(profile.SpecId==65) {HOLY.Inst.Sacrifice.Reset("采样失效：联动已清除");HOLY.Inst.Raid.Reset();} return "执行等待有效职业数据 / 心跳"; }
+        if (foreground() != game.Handle) { CJQ.Inst.Cancel(); if(profile.SpecId==65) {HOLY.Inst.Sacrifice.Reset("游戏不在前台：联动已清除");HOLY.Inst.Raid.Reset();} return "执行等待游戏处于前台"; }
         if (manualInput?.Invoke() ?? global::Program.ClassManualInputPressed(profile)) manualPauseUntil = now + .5;
-        if (now < manualPauseUntil) return "执行让出手动按键（500 ms）";
+        if (now < manualPauseUntil) {if(profile.SpecId==65) HOLY.Inst.Raid.Reset();return "执行让出手动按键（500 ms）";}
         for (int i = 0; i < layout.Frames.Length; i++) frames[i + 1] = sample.At(layout.Frames[i]);
         for (int i = 0; i < layout.Bars.Length; i++) bars[i + 1] = sample.At(layout.Bars[i]);
         if (layout.SpecialEnabled) frames[DisplayProtocol.SpecialStart] = sample.At(layout.Special);
@@ -60,7 +60,7 @@ internal sealed class RotationExecution
         if (profile.SpecId == 72) KBZ.Inst.Buffs = FuryBuffs.Read(layout, sample.At);
         if (profile.SpecId == 65) { HOLY.Inst.Buffs = HolyBuffs.Read(layout, sample.At); HOLY.Inst.Thresholds = layout.HolyThresholds; }
         // Recheck immediately before sending keys, after assembling this sample.
-        if (foreground() != game.Handle) { CJQ.Inst.Cancel(); if(profile.SpecId==65) HOLY.Inst.Sacrifice.Reset("游戏不在前台：联动已清除"); return "执行等待游戏处于前台"; }
+        if (foreground() != game.Handle) { CJQ.Inst.Cancel(); if(profile.SpecId==65) {HOLY.Inst.Sacrifice.Reset("游戏不在前台：联动已清除");HOLY.Inst.Raid.Reset();} return "执行等待游戏处于前台"; }
         if (execute is not null) execute(frames, bars);
         else global::Program.ExecuteClassSample(profile, frames, bars);
         if (profile.SpecId == 70) return $"{CJQ.Inst.LastDecision.Branch} · {CJQ.Inst.LastDecision.Reason}";
