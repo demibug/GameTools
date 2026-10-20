@@ -24,6 +24,7 @@ internal sealed class DiagnosticForm : Form
     private readonly PartyRosterPanel partyPanel = new();
     private readonly PartyDiagnosticLog partyDiagnostics = new();
     private readonly HolyHealingDiagnosticLog healingDiagnostics = new();
+    private readonly HolyMasteryDiagnosticLog masteryDiagnostics = new();
     private readonly Dictionary<int,Color> healingFrames = new();
     private readonly StateChangeLog logStates = new();
     private readonly CaptureBuffer captureBuffer = new();
@@ -220,7 +221,7 @@ internal sealed class DiagnosticForm : Form
         holySettings.RowStyles.Add(new(SizeType.Absolute,38));
         holySettings.Controls.Add(holyPoints,0,0);holySettings.Controls.Add(holyOptions,0,1);
         holyOptions.Controls.Add(holyRaidMastery);
-        loopTooltip.SetToolTip(holyRaidMastery,"默认开启。关闭后团本光环掌握由你手动释放；小队不受此开关影响。自动群疗须已确认附带鸣钟天赋。");
+        loopTooltip.SetToolTip(holyRaidMastery,"默认开启。关闭后团本光环掌握由你手动释放；小队不受此开关影响。按当前已确认的天堂回响天赋判断严重群伤、持续恶化或群体危急。");
         holyRaidMastery.CheckedChanged+=(_,_)=>
         {
             if(updatingControls||layout is null||activeProfile?.SpecId!=65) return;
@@ -728,7 +729,8 @@ internal sealed class DiagnosticForm : Form
             if(activeProfile?.SpecId==65) {
                 for(int i=0;i<layout.Frames.Length;i++) healingFrames[i+1]=next.At(layout.Frames[i]);
                 var raidBars=Enumerable.Range(1,49).ToDictionary(i=>i,i=>next.At(layout.Bars[i-1]));
-                HOLY.Inst.ObserveHealing(healingFrames,layout.HolyThresholds,clock.Elapsed.TotalSeconds,live,execution.Enabled,global::Program.GetForegroundWindow()==game.Handle,raidBars);
+                HOLY.Inst.ObserveHealing(healingFrames,layout.HolyThresholds,clock.Elapsed.TotalSeconds,live,execution.Enabled,global::Program.GetForegroundWindow()==game.Handle,raidBars,
+                    Colors.Kind(next.At(layout.Markers[2]))==3);
                 if(!live) healingFrames.Clear();
             }
             string reason = mode == 4 ? "定位图案" : activeProfile is null ? identity.DisplayName : mode != 2 ? "插件尚未输出 / 需重载 / 坐标不匹配" : !alive ? "心跳等待或超过 1.5 秒未变化" : "";
@@ -801,8 +803,9 @@ internal sealed class DiagnosticForm : Form
                 var f=Enumerable.Range(1,DisplayProtocol.CellCount).ToDictionary(i=>i,i=>next.At(layout.Frames[i-1]));
                 var target=next.At(layout.Frames[7]);double? targetHp=target.R==target.G&&target.G==target.B?target.R/255.0:null;
                 bool raid=FuryBuffs.Boolean(next.At(layout.Frames[40]))==true;
-                var injury=HolyTriage.Analyze(f,raid,layout.HolyThresholds);
-                executionStatus.Text="诊断（执行关闭）："+(injury.Major?"群体大掉血 · ":"")+HolyTriage.Single(targetHp,layout.HolyThresholds)+" · "+HOLY.Decide(f,HolyBuffs.Read(layout,next.At),layout.HolyThresholds,new(Healing:HOLY.Inst.HealingSample),party:roster,power:power,raidRoster:HOLY.Inst.Raid.Roster,raidHealing:HOLY.Inst.Raid.Sample).Reason;
+                var injury=HolyTriage.Analyze(HolyTriage.HealingFrames(f,HOLY.Inst.Raid.Roster),raid,layout.HolyThresholds);
+                var context=raid?HOLY.Inst.Raid.CooldownContext:HOLY.Inst.CooldownContext;
+                executionStatus.Text="诊断（执行关闭）："+(injury.Major?"群体大掉血 · ":"")+HolyTriage.Single(targetHp,layout.HolyThresholds)+" · "+HOLY.Decide(f,HolyBuffs.Read(layout,next.At),layout.HolyThresholds,context,party:roster,power:power,raidRoster:HOLY.Inst.Raid.Roster,raidHealing:HOLY.Inst.Raid.Sample).Reason;
             }
             int charges = next.At(layout.Bars[1]).R == 255 ? 2 : next.At(layout.Bars[0]).R == 255 ? 1 : 0;
             string extra = activeProfile?.SpecId == 73 ? $" · 盾牌格挡充能 {charges}" : "";
@@ -923,6 +926,9 @@ internal sealed class DiagnosticForm : Form
     private void RecordHealingDiagnostics(HolyBuffs buffs)
     {
         var changes=healingDiagnostics.Observe(HOLY.Inst.HealingSample,healingFrames,buffs,layout?.HolyThresholds??new(),execution.Enabled);
+        var context=healingFrames.TryGetValue(41,out var mode)&&FuryBuffs.Boolean(mode)==true?
+            HOLY.Inst.Raid.CooldownContext:HOLY.Inst.CooldownContext;
+        changes.AddRange(masteryDiagnostics.Observe(context,healingFrames,layout?.HolyThresholds??new(),execution.Enabled));
         changes.AddRange(HOLY.Inst.Sacrifice.DrainChanges());
         foreach(var change in changes) AddLog(change.Message,change.Key);
         holyShieldLog.RecordPartyChanges(changes);

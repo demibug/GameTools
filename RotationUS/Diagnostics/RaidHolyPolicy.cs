@@ -18,7 +18,7 @@ internal static class RaidHolyPolicy
         return best;
     }
     internal static HolyDecision Decide(Dictionary<int,Color> f,HolyBuffs buff,HealingThresholds t,HolyCooldownContext context,
-        RaidRosterSnapshot? roster,RaidHealingSample? sample=null,int pendingSelection=0)
+        RaidRosterSnapshot? roster,RaidHealingSample? sample=null,int pendingSelection=0,bool targetConfirmed=true)
     {
         bool? F(int id)=>f.TryGetValue(id,out var c)?FuryBuffs.Boolean(c):null;
         double? P(int id)=>f.TryGetValue(id,out var c)&&c.R==c.G&&c.G==c.B?c.R/255.0:null;
@@ -42,7 +42,9 @@ internal static class RaidHolyPolicy
         var group=F(19)==true?RaidInjury.Read(f,roster,t):new();
         bool window=sample?.VirtueActive==true;
         bool emergency=group.Emergency;
-        bool mastery=t.AutoAuraMastery&&t.AuraMasteryHasToll&&t.RaidAutoAuraMastery&&Skill(8)&&context.Allows(14,emergency);
+        var masterySample=HolyMasterySample.Read(HolyTriage.HealingFrames(f,roster),t) with{
+            SevereConfirmed=context.Mastery?.SevereConfirmed==true,Worsening=context.Mastery?.Worsening==true};
+        bool mastery=t.RaidAutoAuraMastery&&Skill(8)&&context.Allows(14,emergency)&&HolyMasteryPolicy.Eligible(masterySample,f);
         bool selfNeed=P(6) is >0&&P(6)<t.HealBelow,selfCritical=selfNeed&&P(6)<t.Critical;
         int best=F(19)==true?Best(f,roster,t):0;
         double bestHp=best>0?Member(best)!.Value:t.HealBelow;
@@ -55,27 +57,34 @@ internal static class RaidHolyPolicy
         bool selfPriority=selfNeed&&P(6)<=otherHp;
         bool critical=need&&P(8)<t.Critical;
         bool capped=F(92)==true,canSpend=F(91)==true||capped||buff.DivinePurpose==true;
+        HolyDecision? OrdinaryMastery()=>!emergency&&mastery&&F(19)==true&&F(91)==false&&F(92)==false&&buff.DivinePurpose!=true?
+            new(14,HolyMasteryPolicy.Reason(masterySample,f,t,true)):null;
         bool hardLight=infusion==false&&F(22)==false&&F(10)==true&&P(7)>=t.HolyLightMana&&Skill(6);
         bool HandFor(double? hp)=>hp is >0&&hp<t.HealBelow&&hand==true&&Skill(6)&&(hp<t.Major||buff.HandExpiring==true||window);
+        bool MovingHand(double? hp)=>hp is >0&&hp<t.HealBelow&&F(10)==false&&hand==true&&Skill(6);
         bool instant=(canSpend&&Skill(3))||Skill(2)||(infusion==true&&Skill(5));
-        bool CanFollow(double? hp)=>hp is >0&&hp<t.HealBelow&&(instant||HandFor(hp)||(F(10)==true&&(Skill(5)||(hp<t.Major&&hardLight))));
+        bool CanFollow(double? hp)=>hp is >0&&hp<t.HealBelow&&(instant||HandFor(hp)||MovingHand(hp)||(F(10)==true&&(Skill(5)||(hp<t.Major&&hardLight))));
         bool urgentRecipient=selfCritical||critical||(best>0&&bestHp<t.Critical);
         bool reselect=pendingSelection>0&&best>0&&best!=pendingSelection&&roster!.Target(best);
         // Self macros work anywhere in the roster. Shock needs either an
         // already confirmed target or one of the thirty selectable slots.
         // Do not open an empty Virtue solely for unselectable self Shock.
-        bool selfFollow=selfNeed&&((canSpend&&Skill(3))||(infusion==true&&Skill(5))||HandFor(P(6))||
+        bool selfFollow=selfNeed&&((canSpend&&Skill(3))||(infusion==true&&Skill(5))||HandFor(P(6))||MovingHand(P(6))||
             (F(10)==true&&(Skill(5)||(P(6)<t.Major&&hardLight))));
         bool followup=selfFollow||(healing&&CanFollow(P(8)))||(best>0&&CanFollow(bestHp));
         HolyDecision? Virtue(bool allowSelection)
         {
             if(!group.Aoe||window||!followup||!Skill(9)||!context.Allows(15)) return null;
-            if(healing&&!reselect) return new(15,"团队至少4人受伤：先美德铺垫，随后直接治疗");
-            if(allowSelection&&best>0&&CanFollow(bestHp)&&!roster!.Target(best)) return Select(best,"为团队美德选择");
+            if(healing&&!reselect&&(targetConfirmed||!urgentRecipient)) {
+                if(!targetConfirmed&&OrdinaryMastery() is {} readyMastery) return readyMastery;
+                return new(15,"团队至少4人受伤：先美德铺垫，随后直接治疗");
+            }
+            if(allowSelection&&best>0&&CanFollow(bestHp)&&!roster!.Target(best)) return OrdinaryMastery()??Select(best,"为团队美德选择");
             return null;
         }
         if(urgentRecipient&&Virtue(false) is {} urgentVirtue) return urgentVirtue;
-        if(emergency&&mastery&&!Skill(4)) return new(14,"团队至少4人危急，鸣钟不可用：紧急光环掌握",true);
+        bool executableToll=healing&&targetConfirmed&&Skill(4)&&context.Allows(10,true)&&!reselect;
+        if(emergency&&mastery&&!executableToll) return new(14,"团队至少4人危急，鸣钟当前无可执行路径：紧急光环掌握",true);
         HolyDecision? Rescue(bool self)
         {
             int glory=self?2:9,flash=self?1:11,light=self?3:12;
@@ -88,7 +97,7 @@ internal static class RaidHolyPolicy
             if(canSpend&&Skill(3)) return new(glory,"危急抢救：荣耀圣令／永恒之火",true);
             return null;
         }
-        if(emergency&&healing&&Skill(4)&&context.Allows(10,true)&&!reselect) return new(10,"团队至少4人危急：立即鸣钟，允许圣能溢出",true);
+        if(emergency&&executableToll) return new(10,"团队至少4人危急：立即鸣钟，允许圣能溢出",true);
         if(selfCritical&&selfPriority&&Rescue(true) is {} selfRescue&&(selfRescue.Key!=8||!reselect)) return selfRescue;
         if(reselect) return Select(best,"团队治疗优先级变化，重新确认当前目标",bestHp<t.Critical);
         if(best>0&&bestHp<t.Critical&&!roster!.Target(best)) return Select(best,"团队危急抢救选人",true);
@@ -99,6 +108,7 @@ internal static class RaidHolyPolicy
             if(need) return new(9,"神圣意志临期：免费荣耀先于普通美德铺垫");
         }
         if(!urgentRecipient&&Virtue(true) is {} virtue) return virtue;
+        if(!targetConfirmed&&OrdinaryMastery() is {} independentMastery) return independentMastery;
         bool selfHeal=selfPriority,needsHeal=selfHeal||need;
         double? healHp=selfHeal?P(6):P(8);
         int gloryKey=selfHeal?2:9,flashKey=selfHeal?1:11,lightKey=selfHeal?3:12;
@@ -111,8 +121,11 @@ internal static class RaidHolyPolicy
         }
         if(!selfHeal) {
             if(roster is null) return new(0,"等待团队选人协议，请更新插件并脱战 /reload");
-            if(!roster.BindingsReady) return new(0,"等待团队快捷键就绪，请脱战初始化插件");
-            if(best>0&&!roster.Target(best)) return Select(best,"选择范围内最低血量团队成员",bestHp<t.Critical);
+            // Missing selection bindings must not block a qualified self cooldown.
+            // Keep the ordinary resource and injury gates in OrdinaryMastery.
+            if(!roster.BindingsReady) return OrdinaryMastery()??new(0,"等待团队快捷键就绪，请脱战初始化插件");
+            if(best>0&&!roster.Target(best)) return OrdinaryMastery()??Select(best,"选择范围内最低血量团队成员",bestHp<t.Critical);
+            if(!healing&&OrdinaryMastery() is {} noTargetMastery) return noTargetMastery;
             if(F(3)!=true) return new(0,"等待存活目标／可治疗团队成员");
             if(F(4)==true&&!healing) return new(0,"等待团队目标身份及治疗距离确认");
             if(healing&&P(8) is null) return new(0,"等待目标血量");
@@ -127,14 +140,14 @@ internal static class RaidHolyPolicy
         if(healing&&worsening&&wings) return new(13,"团队至少4人低于70%且持续恶化：优先翅膀");
         if(toll&&F(91)==false&&F(92)==false) return new(10,group.Immediate?"团队至少4人大掉血：鸣钟（;）":"团队至少4人缺血、总缺血≥40个百分点且连续两次确认：鸣钟（;）");
         if(healing&&group.Reliable&&(group.WingsSevere>=4||worsening)&&wings) return new(13,"团队至少4人严重掉血：复仇之怒");
-        bool pressure=group.Major||emergency||(group.Aoe&&context.Sustained);
-        if(healing&&pressure&&mastery&&!emergency&&spender) return new(gloryKey,"光环掌握附带鸣钟前先消耗圣能");
-        if(healing&&pressure&&mastery&&(emergency||(F(91)==false&&F(92)==false))) return new(14,"团队至少4人治疗压力：附带鸣钟的光环掌握");
+        if(mastery&&!emergency&&spender) return new(gloryKey,"光环掌握附带鸣钟前先消耗圣能");
+        if(OrdinaryMastery() is {} normalMastery) return normalMastery;
         if(Shock(true) is {} fullShock) return fullShock;
         if(needsHeal&&infusion==true&&Skill(5)) return new(flashKey,"灌注Buff：圣光闪现");
         if(needsHeal&&HandFor(healHp)) return new(lightKey,healHp<t.Major?"神性之手：大掉血瞬发圣光术":buff.HandExpiring==true?"神性之手临期：瞬发圣光术":"团队美德9秒推定窗口：神性之手瞬发圣光术");
         if(Shock() is {} shock) return shock;
         if(needsHeal&&F(91)==true&&Skill(3)) return new(gloryKey,"消耗3圣能荣耀圣令");
+        if(needsHeal&&MovingHand(healHp)) return new(lightKey,"移动中无其他可执行瞬发：神性之手圣光术兜底");
         if(needsHeal&&healHp<t.Major&&hardLight) return new(lightKey,"大掉血、无灌注、震击冷却、静止且法力足够：圣光术");
         if(needsHeal&&F(10)==true&&Skill(5)) return new(flashKey,"治疗兜底圣光闪现");
         if(!needsHeal&&!capped&&F(12)==true&&F(99)==true&&Skill(1)) return new(7,"距离内敌对目标审判");

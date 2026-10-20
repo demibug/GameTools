@@ -66,12 +66,12 @@ internal static class HolyPriorityTests
         foreach(bool self in new[]{false,true}) {
             var f=Frame(self,false,.70);Skill(f,6);f[10]=Color.Black;
             var buff=new HolyBuffs {Infusion=false,HandOfDivinity=true};
-            Check(RaidTestFixture.Decide(f,buff).Key==0,"moving with ordinary injury preserves Hand instead of spending it merely because it exists");
-            Skill(f,9);f[53]=Color.FromArgb(179,255,0);
-            Check(RaidTestFixture.Decide(f,buff).Key!=15,"reserved Hand alone cannot authorize Virtue without executable follow-up");
+            Check(Spell(RaidTestFixture.Decide(f,buff).Key)==12,"moving ordinary injury uses Hand when no other instant heal exists");
+            Skill(f,9);f[53]=f[54]=Color.FromArgb(179,255,0);
+            Check(RaidTestFixture.Decide(f,buff).Key==15,"moving Hand supports an executable Virtue follow-up");
             f=Frame(self,false,.55);Skill(f,6);f[10]=Color.Black;
             Check(Spell(RaidTestFixture.Decide(f,buff).Key)==12,"major injury permits Hand while moving");
-            Check(RaidTestFixture.Decide(f,buff,new(Major:.50)).Key==0,"Hand follows configured major-injury threshold");
+            Check(Spell(RaidTestFixture.Decide(f,buff,new(Major:.50)).Key)==12,"moving fallback also covers injury above configured Major");
         }
         // Group cooldowns must not be preempted solely by an early self macro.
         foreach(int cooldown in new[]{4,9}) {

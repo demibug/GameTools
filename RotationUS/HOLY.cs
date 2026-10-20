@@ -19,14 +19,28 @@ internal sealed class HOLY
     internal RaidHealingController Raid {get;}=new();
     private HolyHealingSample? preparedHealing;
     private double preparedAt;
+    private bool? lastPulse;
+    private double lastCaptureAt=double.NegativeInfinity;
+    private Dictionary<int,Color>? pressureFrames;
+    internal HolyCooldownContext CooldownContext=>pressure.Current with{Healing=HealingSample,Sacrifice=Sacrifice.Current};
     internal HolySacrificeProtection Sacrifice {get;}=new();
     internal HolyHealingSample HealingSample=>healingWindow.Current;
-    internal HolyHealingSample ObserveHealing(Dictionary<int,Color> frames,HealingThresholds t,double now,bool live=true,bool executing=true,bool foreground=true,IReadOnlyDictionary<int,Color>? raidBars=null)
+    internal HolyHealingSample ObserveHealing(Dictionary<int,Color> frames,HealingThresholds t,double now,bool live=true,bool executing=true,bool foreground=true,IReadOnlyDictionary<int,Color>? raidBars=null,bool? pulse=null)
     {
         preparedAt=now;
         if(live&&executing&&!foreground) Sacrifice.Reset("游戏不在前台：联动已清除");
         else Sacrifice.Observe(frames,now,live,executing);
         Raid.Observe(frames,raidBars,t,now,live&&(!executing||foreground));
+        bool party=frames.TryGetValue(41,out var mode)&&FuryBuffs.Boolean(mode)==false;
+        if(!live||!party||!double.IsFinite(now)) {
+            pressure.Reset();pressureFrames=null;lastPulse=null;lastCaptureAt=double.NegativeInfinity;
+        } else if(now!=lastCaptureAt) {
+            if(now<lastCaptureAt||now-lastCaptureAt>1.5) {pressure.Reset();lastPulse=null;}
+            bool fresh=pulse is null||lastPulse is null||lastPulse!=pulse;
+            lastPulse=pulse;lastCaptureAt=now;
+            pressureFrames=HolyTriage.HealingFrames(frames);
+            pressure.Observe(pressureFrames,t,now,fresh);
+        }
         return preparedHealing=healingWindow.Observe(frames,t,now,live);
     }
     internal PartyRosterSnapshot? PartyRoster {get;private set;}
@@ -42,12 +56,17 @@ internal sealed class HOLY
         if(value is null || RunicPower?.Roster.Matches(value)!=true) RunicPower=null;
     }
     private void ResetSelection() {pendingSlot=confirmations=0;reevaluateSelection=false;}
-    internal void Reset() {ResetSelection();bloodReducedMask=0;pressure.Reset();healingWindow.Reset();preparedHealing=null;Sacrifice.Reset();Raid.Reset();}
+    internal void CancelExecution(bool clearSacrifice=true)
+    {
+        ResetSelection();bloodReducedMask=0;pressure.ClearRequests();Raid.CancelExecution();
+        if(clearSacrifice) Sacrifice.Reset();
+    }
+    internal void Reset() {ResetSelection();bloodReducedMask=0;pressure.Reset();healingWindow.Reset();preparedHealing=null;pressureFrames=null;lastPulse=null;lastCaptureAt=double.NegativeInfinity;Sacrifice.Reset();Raid.Reset();}
     public void Process(Dictionary<int,Color> frames,Dictionary<int,Color> bars,Dictionary<int,bool> states)=>Process(frames,bars,states,null);
     internal void Process(Dictionary<int,Color> frames,Dictionary<int,Color> bars,Dictionary<int,bool> states,double? observationTime)
     {
         bool? F(int id)=>frames.TryGetValue(id,out var c)?FuryBuffs.Boolean(c):null;
-        double now=observationTime??(double)System.Diagnostics.Stopwatch.GetTimestamp()/System.Diagnostics.Stopwatch.Frequency;
+        double now=observationTime??(preparedHealing is not null?preparedAt:(double)System.Diagnostics.Stopwatch.GetTimestamp()/System.Diagnostics.Stopwatch.Frequency);
         double sacrificeAt=observationTime??(preparedHealing is not null?preparedAt:now);
         if(observationTime is not null||preparedHealing is null) Sacrifice.Observe(frames,sacrificeAt);
         if(F(41)==true) {
@@ -58,8 +77,8 @@ internal sealed class HOLY
             return;
         }
         Raid.Reset();
-        var observed=observationTime is not null?healingWindow.Observe(frames,Thresholds,now):
-            preparedHealing??healingWindow.Observe(frames,Thresholds,now);
+        if(observationTime is not null||preparedHealing is null) ObserveHealing(frames,Thresholds,now);
+        var observed=preparedHealing!;
         preparedHealing=null;
         int nextBloodMask=0;
         if(F(41)==false && F(19)==true && F(1)==true)
@@ -70,8 +89,9 @@ internal sealed class HOLY
         // the same recipient. Retain this request while the GCD blocks Decide.
         if(pendingSlot>0 && nextBloodMask!=bloodReducedMask) reevaluateSelection=true;
         bloodReducedMask=nextBloodMask;
-        var decision=Decide(frames,Buffs,Thresholds,pressure.Observe(frames,Thresholds,now) with {Healing=observed,Sacrifice=Sacrifice.Current},PartyRoster,RunicPower,
-            reevaluateSelection?pendingSlot:0);
+        bool targetConfirmed=pendingSlot==0||(F(45+pendingSlot)==true&&confirmations>=1);
+        var decision=Decide(frames,Buffs,Thresholds,CooldownContext with{Healing=observed},PartyRoster,RunicPower,
+            reevaluateSelection?pendingSlot:0,targetConfirmed:targetConfirmed);
         // All members recovered while selecting: a confirmed safe damage action
         // replaces the obsolete heal selection without waiting for its target.
         if(pendingSlot>0&&(decision.Key==18||
@@ -81,7 +101,7 @@ internal sealed class HOLY
         {
             LastDecision=decision;states[decision.Key]=true;
             if(decision.Key==5) Sacrifice.Requested(sacrificeAt);
-            pressure.Requested(decision.Key,frames,Thresholds,now);
+            pressure.Requested(decision.Key,pressureFrames??frames,Thresholds,now);
             return;
         }
         if(pendingSlot>0) {
@@ -104,15 +124,15 @@ internal sealed class HOLY
         if(LastDecision.Key!=0) {
             states[LastDecision.Key]=true;
             if(LastDecision.Key==5) Sacrifice.Requested(sacrificeAt);
-            pressure.Requested(LastDecision.Key,frames,Thresholds,now);
+            pressure.Requested(LastDecision.Key,pressureFrames??frames,Thresholds,now);
         }
     }
-    internal static HolyDecision Decide(Dictionary<int,Color> frames,HolyBuffs buff,HealingThresholds? thresholds=null,HolyCooldownContext? cooldowns=null,PartyRosterSnapshot? party=null,PartyRunicPower? power=null,int pendingSelection=0,RaidRosterSnapshot? raidRoster=null,RaidHealingSample? raidHealing=null)
+    internal static HolyDecision Decide(Dictionary<int,Color> frames,HolyBuffs buff,HealingThresholds? thresholds=null,HolyCooldownContext? cooldowns=null,PartyRosterSnapshot? party=null,PartyRunicPower? power=null,int pendingSelection=0,RaidRosterSnapshot? raidRoster=null,RaidHealingSample? raidHealing=null,bool targetConfirmed=true)
     {
         var t=thresholds??new();
         var context=cooldowns??new();
         if(frames.TryGetValue(41,out var mode)&&FuryBuffs.Boolean(mode)==true)
-            return RaidHolyPolicy.Decide(frames,buff,t,context,raidRoster,raidHealing,pendingSelection);
+            return RaidHolyPolicy.Decide(frames,buff,t,context,raidRoster,raidHealing,pendingSelection,targetConfirmed);
         bool? F(int id)=>frames.TryGetValue(id,out var c)?FuryBuffs.Boolean(c):null;
         double? P(int id)=>frames.TryGetValue(id,out var c)&&c.R==c.G&&c.G==c.B?c.R/255.0:null;
         bool Skill(int n)=>F(20+n)==true&&F(30+n)==true;
@@ -125,7 +145,9 @@ internal sealed class HOLY
             (partyToll.Ordinary&&context.Healing?.TollConfirmed==true);
         bool virtueWindow=!raid&&context.Healing?.VirtueActive==true;
         if(F(41)!=false||F(19)!=true||party?.Members.Any(m=>m.Role is 1 or 2)!=true) party=null;
-        var group=HolyTriage.Analyze(frames,raid,t);
+        var all=HolyTriage.Analyze(frames,raid,t);
+        var treatment=HolyTriage.HealingFrames(frames);
+        var group=HolyTriage.Analyze(treatment,raid,t);
         if(P(6)<=.40&&F(16)==true) return new(22,"治疗石：血量≤40%");
         if(P(6)<=.40&&F(17)==true) return new(23,"治疗药水：血量≤40%");
         // Independent of HP and target. Global combat/alive/protocol guards above
@@ -136,7 +158,7 @@ internal sealed class HOLY
         // member is healthy. Unknown members cannot be treated as full health.
         if(F(3)==true&&F(4)==false&&F(12)==true&&F(95)==true&&F(97)==true&&F(98)==true&&
             F(9)==true&&F(20)==true&&F(19)==true&&F(41) is not null&&
-            P(6)>=t.HealBelow&&group.Reliable&&group.Unknown==0&&group.Injured==0&&!group.Major&&
+            P(6)>=t.HealBelow&&all.Reliable&&all.Unknown==0&&all.Injured==0&&!all.Major&&
             ((F(92)==true&&F(13)==true)||buff.PurposeExpiringConfirmed))
             return new(18,buff.PurposeExpiringConfirmed?
                 "神圣意志临期且全队安全：忽略圣能与震击充能，近战盾击消耗免费触发（Shift+.）":
@@ -146,7 +168,9 @@ internal sealed class HOLY
         if(P(6)<.60&&Skill(10)&&!(F(19)==true&&F(41) is not null&&context.Sacrifice?.Holding==true)) return new(5,"自身低于60%：圣佑术（-）");
         if(F(9)!=true||F(20)!=true) return new(0,"等待玩家施法结束或GCD");
         bool emergency=raid?F(19)==true&&group.Reliable&&group.Urgent>=HolyTriage.MinimumGroupMembers:partyToll.Emergency;
-        bool mastery=t.AutoAuraMastery&&t.AuraMasteryHasToll&&(!raid||t.RaidAutoAuraMastery)&&Skill(8)&&context.Allows(14,emergency);
+        var masterySample=HolyMasterySample.Read(treatment,t) with{
+            SevereConfirmed=context.Mastery?.SevereConfirmed==true,Worsening=context.Mastery?.Worsening==true};
+        bool mastery=Skill(8)&&context.Allows(14,emergency)&&HolyMasteryPolicy.Eligible(masterySample,frames);
         bool selfNeed=P(6) is >0&&P(6)<t.HealBelow;
         bool selfCritical=selfNeed&&P(6)<t.Critical;
         bool healing=F(3)==true&&F(4)==true&&F(5)==true;
@@ -175,14 +199,18 @@ internal sealed class HOLY
         bool hardLight=infusion==false&&F(22)==false&&F(10)==true&&P(7)>=t.HolyLightMana&&Skill(6);
         bool capped=F(92)==true;
         bool canSpend=F(91)==true||capped||buff.DivinePurpose==true;
+        HolyDecision? OrdinaryMastery()=>!emergency&&mastery&&F(19)==true&&F(41)==false&&
+            F(91)==false&&F(92)==false&&buff.DivinePurpose!=true?
+            new(14,HolyMasteryPolicy.Reason(masterySample,frames,t,false)):null;
         bool aoe=F(19)==true&&group.Aoe;
         bool big=F(19)==true&&group.Major;
         bool critical=need&&P(8)<t.Critical;
         bool HandFor(double? hp)=>hp is >0&&hp<t.HealBelow&&hand==true&&Skill(6)&&
             (hp<t.Major||buff.HandExpiring==true||virtueWindow);
+        bool MovingHand(double? hp)=>hp is >0&&hp<t.HealBelow&&F(10)==false&&hand==true&&Skill(6);
         bool instant=(canSpend&&Skill(3))||Skill(2)||(infusion==true&&Skill(5));
         bool CanFollow(double? hp)=>hp is >0&&hp<t.HealBelow&&
-            (instant||HandFor(hp)||(F(10)==true&&(Skill(5)||(hp<t.Major&&hardLight))));
+            (instant||HandFor(hp)||MovingHand(hp)||(F(10)==true&&(Skill(5)||(hp<t.Major&&hardLight))));
         bool urgentRecipient=selfCritical||critical||(!raid&&best>0&&bestHp<t.Critical);
         bool reselectCurrent=!raid&&pendingSelection>0&&best>0&&best!=pendingSelection&&F(45+best)==true;
         // Virtue's recipient and the following direct-heal recipient may differ.
@@ -192,10 +220,12 @@ internal sealed class HOLY
         HolyDecision? VirtueSetup(bool allowSelection)
         {
             if(!(aoe||emergency)||virtueWindow||!virtueFollowup||!Skill(9)||!context.Allows(15)) return null;
-            if((F(46)==true||healing)&&!reselectCurrent)
+            if((F(46)==true||healing)&&!reselectCurrent&&(targetConfirmed||!(urgentRecipient||emergency))) {
+                if(!targetConfirmed&&OrdinaryMastery() is {} readyMastery) return readyMastery;
                 return new(15,urgentRecipient||emergency?"群体危急：优先美德铺垫，随后立即抢救":"群体掉血：优先美德铺垫，随后直接治疗");
+            }
             if(allowSelection&&!raid&&best>0&&CanFollow(bestHp)&&F(45+best)!=true)
-                return new(100+best,"为美德选择治疗目标："+(best==1?"自己":"party"+(best-1)));
+                return OrdinaryMastery()??new(100+best,"为美德选择治疗目标："+(best==1?"自己":"party"+(best-1)));
             return null;
         }
         // A usable Virtue opens group rescue too. Without a confirmed recipient
@@ -204,8 +234,9 @@ internal sealed class HOLY
         if((urgentRecipient||emergency)&&VirtueSetup(false) is { } urgentVirtue) return urgentVirtue;
         // Mastery is a self cooldown; unavailable Virtue and Toll must not let
         // direct-heal or target-acknowledgement loops starve emergency Mastery.
-        if(emergency&&mastery&&!Skill(4))
-            return new(14,"多人危急且鸣钟不可用：紧急追加光环掌握（允许圣能溢出）",true);
+        bool executableToll=healing&&targetConfirmed&&Skill(4)&&context.Allows(raid?10:4,true)&&!reselectCurrent;
+        if(emergency&&mastery&&!executableToll)
+            return new(14,"多人危急且鸣钟当前无可执行路径：紧急光环掌握（允许圣能溢出）",true);
         HolyDecision? Rescue(bool self)
         {
             int Glory=self?2:9,Flash=self?1:11,Light=self?3:12;
@@ -221,7 +252,7 @@ internal sealed class HOLY
             return null;
         }
         int tollKey=raid?10:4;
-        if(emergency&&healing&&Skill(4)&&context.Allows(tollKey,true)&&!reselectCurrent)
+        if(emergency&&executableToll)
             return new(tollKey,"多人危急：立即鸣钟，允许圣能溢出",true);
         if(selfCritical&&selfPriority&&Rescue(true) is { } selfRescue && (selfRescue.Key!=8||!reselectCurrent)) return selfRescue;
         // A previous select key may still be in flight. If changed priorities
@@ -245,6 +276,7 @@ internal sealed class HOLY
         }
 
         if(!urgentRecipient&&VirtueSetup(true) is { } virtue) return virtue;
+        if(!targetConfirmed&&OrdinaryMastery() is {} independentMastery) return independentMastery;
         // Choose the recipient once; self macros only change the key, not the
         // skill priority. Self Shock still needs a real target/selection route.
         bool selfHeal=selfPriority, needsHeal=selfHeal||need;
@@ -261,7 +293,8 @@ internal sealed class HOLY
             if(F(41) is null||F(19) is null) return new(0,"等待队伍类型");
             // Auto-selection is a separate action. No healing shares its sample.
             if(!raid&&best>0&&F(45+best)!=true)
-                return new(100+best,(party is null?"选择范围内血量最低：":"按血量及小队职责选择：")+(best==1?"自己":"party"+(best-1)),bestHp<t.Critical);
+                return OrdinaryMastery()??new(100+best,(party is null?"选择范围内血量最低：":"按血量及小队职责选择：")+(best==1?"自己":"party"+(best-1)),bestHp<t.Critical);
+            if(!healing&&OrdinaryMastery() is {} noTargetMastery) return noTargetMastery;
             if(F(3)!=true) return new(0,"等待存活目标");
             if(F(4) is null) return new(0,"等待目标友方状态（点4）");
             if(F(4)==true&&F(5)!=true) return new(0,"等待目标进入治疗距离／距离状态（点5）");
@@ -281,10 +314,9 @@ internal sealed class HOLY
         // Unknown resources do not authorize a non-emergency generator burst.
         if(toll&&F(91)==false&&(raid?!capped:F(92)==false)) return new(tollKey,raid?"团队有效群伤：鸣钟（;）":
             partyToll.Immediate?"小队至少3人低于大掉血线：鸣钟（0）":"小队至少3人缺血、总缺血≥40个百分点且连续两次确认：鸣钟（0）");
-        bool groupPressure=big||emergency||(aoe&&context.Sustained);
         if(healing&&wingsPressure&&wings) return new(13,raid?"持续／严重团队治疗需求：复仇之怒":"小队至少3人低于60%：复仇之怒");
-        if(healing&&groupPressure&&mastery&&!emergency&&spender) return new(glory,"光环掌握附带鸣钟前先消耗圣能");
-        if(healing&&groupPressure&&mastery&&(emergency||(F(91)==false&&!capped))) return new(14,"治疗压力仍需加码：带鸣钟的光环掌握");
+        if(mastery&&!emergency&&spender) return new(glory,"光环掌握附带鸣钟前先消耗圣能");
+        if(OrdinaryMastery() is {} normalMastery) return normalMastery;
         if(Shock(true) is { } fullShock) return fullShock;
         if(needsHeal&&infusion==true&&Skill(5)) return new(flash,"灌注Buff存在：圣光闪现");
         // Presence confirms at least one instant Holy Light remains. Re-read after
@@ -293,6 +325,7 @@ internal sealed class HOLY
             buff.HandExpiring==true?"神性之手临期且需要治疗：瞬发圣光术":"小队美德9秒推定窗口：神性之手瞬发圣光术");
         if(Shock() is { } shock) return shock;
         if(needsHeal&&F(91)==true&&Skill(3)) return new(glory,"消耗3圣能荣耀圣令");
+        if(needsHeal&&MovingHand(healHp)) return new(light,"移动中无其他可执行瞬发：神性之手圣光术兜底");
         if(needsHeal&&healHp<t.Major&&hardLight) return new(light,"大掉血、无灌注、震击冷却、静止且法力足够：读条圣光术");
         if(needsHeal&&F(10)==true&&Skill(5)) return new(flash,"治疗兜底圣光闪现");
         if(!needsHeal&&!capped&&F(12)==true&&F(99)==true&&Skill(1)) return new(7,"距离内敌对目标审判");

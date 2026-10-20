@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 using System.Drawing;
 
 namespace RotationUS.Diagnostics;
@@ -127,37 +127,36 @@ internal static class HolyPolicyTests
         Reset();Group();Skill(7);Skill(2);settings=settings with{AutoWings=false};Want(8,"manual Wings reserve");
         Reset(true);Group();for(int i=5;i<=12;i++) Member(i,.4);Skill(7);Skill(2);
         settings=settings with{RaidAutoWings=false};Want(8,"raid Wings reserve");
-        Reset();Group();Skill(8);Skill(2);Want(8,"default Mastery is manual without confirmed talent configuration");
-        settings=settings with{AutoAuraMastery=true};Want(8,"auto switch alone cannot infer Mastery Toll talent");
-        settings=settings with{AuraMasteryHasToll=true};Want(14,"explicit talent enables healing Mastery");
-        F(91);Skill(3);Want(9,"spend before Mastery-generated Toll");
+        var confirmedMastery=new HolyCooldownContext(Mastery:new(SevereConfirmed:true));
+        Reset();Group();Skill(8);Skill(2);Want(8,"severe Mastery waits for independent confirmation");
+        Want(14,"confirmed severe injury enables Mastery without talent configuration",confirmedMastery);
+        F(91);Skill(3);Want(9,"spend before Mastery-generated Toll",confirmedMastery);
         Reset(true);Group();for(int i=5;i<=12;i++) Member(i,.4);Skill(8);Skill(2);
-        settings=settings with{AuraMasteryHasToll=true};Want(14,"raid automatic Mastery defaults on after talent confirmation");
-        settings=settings with{RaidAutoAuraMastery=false};Want(8,"raid switch reserves Mastery for manual use");
-        F(41,false);Want(14,"raid manual switch does not disable party automatic Mastery");
+        Want(14,"raid automatic Mastery defaults on after injury confirmation",confirmedMastery);
+        settings=settings with{RaidAutoAuraMastery=false};Want(8,"raid switch reserves Mastery for manual use",confirmedMastery);
+        F(41,false);Want(14,"raid manual switch does not disable party automatic Mastery",confirmedMastery);
 
         foreach(bool raid in new[]{false,true})
         foreach(int direct in new[]{2,3,5,6}) {
             Reset(raid);Group(.1);Skill(8);Skill(direct);F(91);F(92);
-            settings=settings with{AuraMasteryHasToll=true};
             buff.Infusion=direct==5;buff.HandOfDivinity=direct==6;
             Want(14,"multiple critical members after unavailable Toll precede direct-heal starvation and HP cap");
             Skill(4);Want(raid?10:4,"ready emergency Toll remains the first group rescue");
         }
-        Reset();Group(.1);Skill(8);Skill(2);Skill(4);settings=settings with{AuraMasteryHasToll=true};
+        Reset();Group(.1);Skill(8);Skill(2);Skill(4);
         Check(Tick(0)==4,"emergency Toll opens the chain");Skill(4,false);F(91);F(92);
         Check(Tick(.2)==14,"different emergency cooldown can follow Toll without a shared observation delay");
         Check(Tick(.3)==8,"same Mastery request remains rate limited while direct healing continues");
         Check(Tick(.8)==14,"still-ready Mastery can retry after its own request throttle");
         Skill(8,false);Check(Tick(.9)==8,"Mastery on cooldown returns to direct healing");
         Reset();F(47,false);F(46);Member(2,.4);Check(Tick(0)==102,"selection pending before emergency group damage");
-        Group(.1);Skill(8);settings=settings with{AuraMasteryHasToll=true};
+        Group(.1);Skill(8);
         Check(Tick(.1)==14,"self cooldown emergency is not delayed by pending target acknowledgement");
         Check(Tick(.2)==0,"Mastery requested during target acknowledgement records the minimum cooldown spacing");
-        Reset(true);Group(.1);Skill(8);Skill(2);settings=settings with{AuraMasteryHasToll=true,RaidAutoAuraMastery=false};
+        Reset(true);Group(.1);Skill(8);Skill(2);settings=settings with{RaidAutoAuraMastery=false};
         Want(8,"raid manual override also applies to emergency overflow exception");
-        settings=settings with{RaidAutoAuraMastery=true,AuraMasteryHasToll=false};Want(8,"automatic default never invents the confirmed talent");
-        settings=settings with{AuraMasteryHasToll=true,AutoAuraMastery=false};Want(8,"advanced global manual override still suppresses emergency Mastery");
+        settings=settings with{RaidAutoAuraMastery=true};Want(14,"raid enable restores emergency Mastery without a talent flag");
+        Want(14,"removed global switch cannot block emergency Mastery");
 
         Reset();Group(.75);Skill(9);Skill(5);F(10,false);Want(0,"moving without instant follow-up never opens empty Virtue");
         F(10);Want(15,"standing executable Flash supports Virtue without fixed combination");
@@ -259,7 +258,7 @@ internal static class HolyPolicyTests
         Check(Tick(1)==13,"persistent severe bloodline after unavailable Toll permits Wings without fixed wait");
         Group(.9);Check(Tick(2.1)==0,"recovered group retains Wings");
         Group();Check(Tick(2.2)==13,"renewed severe bloodline permits a still-ready Wings request");
-        Skill(7,false);Skill(8);settings=settings with{AutoAuraMastery=true,AuraMasteryHasToll=true};
+        Skill(7,false);Skill(8);
         Check(Tick(2.3)==14,"continued severe damage with Wings unavailable can append Mastery");
         Group(.25);Check(Tick(3)==14,"still-ready Mastery can retry during severe damage");
         Reset();Group();Skill(4);Skill(7);Skill(2);
@@ -277,10 +276,12 @@ internal static class HolyPolicyTests
 
         Reset();Group(.83);Skill(7);Skill(4);Skill(2);
         Check(Tick(0)==8,"ordinary initial group damage uses regular healing");
+        HOLY.Inst.ObserveHealing(frames,settings,1,executing:false);
         Group(.65);Check(Tick(2.1)==13,"three below70 with sustained worsening choose Wings even when Toll is ready");
-        Skill(7,false);Skill(8);settings=settings with{AutoAuraMastery=true,AuraMasteryHasToll=true};
+        Skill(7,false);Skill(8);
         Check(Tick(3)==4,"ordinary residual injury uses eligible Toll without inheriting a Wings waiting period");
         Reset();Group(.83);Skill(7);Skill(2);Check(Tick(0)==8,"stable ordinary damage setup");
+        Check(Tick(1)==8,"stable ordinary sampling stays continuous");
         Check(Tick(2.1)==8,"elapsed time alone does not turn ordinary damage into Wings demand");
 
         Reset();Group();Skill(4);Skill(7);Skill(2);
@@ -304,9 +305,9 @@ internal static class HolyPolicyTests
         }
         var legacy=System.Text.Json.JsonSerializer.Deserialize<HealingThresholds>("{}")!;
         Check(legacy.TollLow==.8&&legacy.TollCritical==.6&&legacy.CooldownReviewSeconds==2&&legacy.AutoWings&&
-            legacy.AutoAuraMastery&&!legacy.AuraMasteryHasToll&&legacy.RaidAutoAuraMastery,"missing settings default automatic on while talent still needs confirmation");
+            legacy.RaidAutoAuraMastery,"missing settings retain raid auto default and other thresholds");
         var configured=legacy with{CooldownReviewSeconds=3,TollLow=.79,TollCritical=.59,AutoWings=false,
-            RaidAutoWings=false,AutoAuraMastery=true,AuraMasteryHasToll=true,RaidAutoAuraMastery=true};
+            RaidAutoWings=false,RaidAutoAuraMastery=true};
         var restored=System.Text.Json.JsonSerializer.Deserialize<HealingThresholds>(System.Text.Json.JsonSerializer.Serialize(configured));
         Check(configured==restored,"cooldown policy and reserve switches survive configuration round-trip");
         HOLY.Inst.Thresholds=new();HOLY.Inst.Reset();return count;

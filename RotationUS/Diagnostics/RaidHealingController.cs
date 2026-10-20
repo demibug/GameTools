@@ -12,10 +12,14 @@ internal sealed class RaidHealingController
     private double started,lastAt=double.NegativeInfinity;
     internal RaidRosterSnapshot? Roster {get;private set;}
     internal RaidHealingSample Sample=>window.Current;
+    private Dictionary<int,Color>? pressureFrames;
+    internal HolyCooldownContext CooldownContext=>pressure.Current;
+    internal void CancelExecution() {pending=confirmations=0;pressure.ClearRequests();}
     internal void Reset()
     {
         window.Reset();pressure.Reset();Roster=null;identity=null;
         pending=confirmations=confirmedRevision=lastProcessedRevision=observedRevision=0;started=0;lastAt=double.NegativeInfinity;
+        pressureFrames=null;
     }
     internal void Observe(Dictionary<int,Color> f,IReadOnlyDictionary<int,Color>? bars,HealingThresholds t,double now,bool live=true)
     {
@@ -26,12 +30,17 @@ internal sealed class RaidHealingController
         if(observedRevision==roster.Revision&&now-lastAt>1.5) {
             window.Reset();pressure.Reset();pending=confirmations=0;Roster=null;return;
         }
-        if(observedRevision!=roster.Revision) {
+        bool fresh=observedRevision!=roster.Revision;
+        if(fresh) {
             if(now-lastAt>1.5) {window.Reset();pressure.Reset();pending=confirmations=0;}
             lastAt=now;observedRevision=roster.Revision;
         }
         Roster=roster;identity=roster.Identity;
         window.Observe(f,roster,t,now,live);
+        if(fresh) {
+            pressureFrames=HolyTriage.HealingFrames(f,roster);
+            pressure.Observe(pressureFrames,t,now);
+        }
     }
     internal HolyDecision Process(Dictionary<int,Color> f,IReadOnlyDictionary<int,Color> bars,HolyBuffs buffs,HealingThresholds t,
         HolySacrificeContext sacrifice,double now)
@@ -42,11 +51,9 @@ internal sealed class RaidHealingController
         if(roster is not null) lastProcessedRevision=roster.Revision;
         // Only reachable members contribute to the raid's sustained-pressure
         // history. The unmodified raw forty-member HP remains the damage gate.
-        var pressureFrames=new Dictionary<int,Color>(f);
-        if(roster is not null) for(int slot=1;slot<=40;slot++)
-            if(!roster.Reachable(slot)) pressureFrames[50+slot]=roster.Members[slot-1].InRange is null?Color.Orange:Color.Black;
-        var context=pressure.Observe(pressureFrames,t,now) with{Sacrifice=sacrifice};
-        var decision=RaidHolyPolicy.Decide(f,buffs,t,context,roster,Sample,pending);
+        var context=CooldownContext with{Sacrifice=sacrifice};
+        bool targetConfirmed=pending==0||(roster?.Target(pending)==true&&confirmations>=1&&confirmedRevision!=roster.Revision);
+        var decision=RaidHolyPolicy.Decide(f,buffs,t,context,roster,Sample,pending,targetConfirmed);
         bool ValidPending()=>roster is not null&&roster.BindingsReady&&roster.Reachable(pending)&&
             f.TryGetValue(50+pending,out var c)&&TeamHealthReading.Read(c).Percent is >0;
         if(pending>0&&(!ValidPending()||decision.Key==18)) pending=confirmations=0;
@@ -69,7 +76,7 @@ internal sealed class RaidHealingController
         if(RaidTargetKeys.IsSelection(decision.Key)) {
             pending=decision.Key-200;confirmations=0;confirmedRevision=roster!.Revision;started=now;
         }
-        if(decision.Key!=0) pressure.Requested(decision.Key,pressureFrames,t,now);
+        if(decision.Key!=0) pressure.Requested(decision.Key,pressureFrames??f,t,now);
         return decision;
     }
 }

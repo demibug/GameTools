@@ -121,7 +121,7 @@ internal sealed record HealingThresholds(double Critical=.20,double Major=.60,do
     double GroupLow=.70,double GroupCritical=.50,double RaidLowFraction=.30,double RaidCriticalFraction=.20,
     double MinimumCoverage=.75,double HolyLightMana=.30,
     double TollLow=.80,double TollCritical=.60,double CooldownReviewSeconds=2,
-    bool AutoWings=true,bool AutoAuraMastery=true,bool AuraMasteryHasToll=false,
+    bool AutoWings=true,
     bool RaidAutoWings=true,bool RaidAutoAuraMastery=true)
 {
     internal void Validate()
@@ -137,6 +137,20 @@ internal sealed record GroupInjury(int Alive,int Low,int Critical,int Injured,bo
     bool Toll=false,int Urgent=0,bool PartyWingsSevere=false,bool PartyWingsLow=false);
 internal static class HolyTriage
 {
+    // Use only for treatment pressure. Damage safety must inspect the original
+    // full roster, including unreachable and unknown members.
+    internal static Dictionary<int,Color> HealingFrames(Dictionary<int,Color> frames,RaidRosterSnapshot? roster=null)
+    {
+        var result=new Dictionary<int,Color>(frames);
+        bool raid=frames.TryGetValue(41,out var mode)&&FuryBuffs.Boolean(mode)==true;
+        for(int slot=1;slot<=(raid?40:5);slot++) {
+            if(!frames.TryGetValue(50+slot,out var hp)||TeamHealthReading.Read(hp).Percent is not >0) continue;
+            bool? reachable=raid?roster is null?null:roster.Members[slot-1].Self==true?true:roster.Members[slot-1].InRange:
+                slot==1?true:frames.TryGetValue(40+slot,out var range)?FuryBuffs.Boolean(range):null;
+            if(reachable!=true) result[50+slot]=reachable==false?Color.Black:Color.Orange;
+        }
+        return result;
+    }
     internal const int MinimumGroupMembers=3;
     internal static string Single(double? hp,HealingThresholds t)=>hp is null?"血量未知":hp<t.Critical?"单体危急":hp<t.Major?"单体大掉血":hp<t.HealBelow?"单体普通掉血":"轻微掉血，无需治疗";
     internal static GroupInjury Analyze(Dictionary<int,Color> frames,bool raid,HealingThresholds t)

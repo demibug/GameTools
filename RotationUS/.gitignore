@@ -1,3 +1,6 @@
+# Temporary builds created for local verification
+/.build/
+
 # Runtime exports, screenshots, and logs
 /captures/
 *.log

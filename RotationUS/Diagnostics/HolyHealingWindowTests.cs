@@ -84,14 +84,14 @@ internal static class HolyHealingWindowTests
 
         Reset();Skill(4,false);Skill(2,false);Skill(6);F(10,false);
         var hand=new HolyBuffs {HandOfDivinity=true,Infusion=false};
-        Check(Decide(HolyHealingSample.Empty,hand)==0,"ordinary injury preserves Hand outside window");
+        Check(Decide(HolyHealingSample.Empty,hand)==12,"moving ordinary injury can use Hand outside window");
         F(29);Observe(0);F(29,false);active=Observe(.1);
         Check(Decide(active,hand)==12,"inferred party Virtue allows useful instant Holy Light");
         hand.HandExpiring=true;Check(Decide(HolyHealingSample.Empty,hand)==12,"confirmed expiry allows ordinary injured target");
         F(94,false);Check(Decide(active,hand)==0,"native absence overrides external expiry and window");
         f[94]=Color.Orange;Target(1);Member(3,1);Member(4,1);Check(Decide(active,hand)==0,"expiry/window never authorizes healing full HP");
         Reset();F(41);Skill(4,false);Skill(2,false);Skill(6);F(10,false);
-        Check(Decide(active,new(){HandOfDivinity=true,Infusion=false})==0,"party window cannot change raid Hand rule");
+        Check(Decide(active,new(){HandOfDivinity=true,Infusion=false})==12,"raid moving fallback works without a party window");
         Skill(4);Skill(6,false);Skill(2);Check(Decide(confirmed)==8,"party ordinary Toll confirmation cannot relax raid thresholds");
 
         var layout=new DiagnosticLayout();layout.SpecialPoints["holy_hand"]=new(){Enabled=true,ReferenceColor=new(255,255,255),Comparison="expiring"};

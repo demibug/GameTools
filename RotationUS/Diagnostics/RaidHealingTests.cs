@@ -11,7 +11,7 @@ internal static class RaidHealingTests
         int count=0;
         void Check(bool ok,string why) {if(!ok) throw new Exception("FAIL raid healing: "+why);count++;}
         var f=new Dictionary<int,Color>();var b=new Dictionary<int,Color>();
-        var t=new HealingThresholds(AuraMasteryHasToll:true);
+        var t=new HealingThresholds();
         var buffs=new HolyBuffs();var window=new RaidHealingWindow();var control=new RaidHealingController();
         int seq=0,epoch=1;double now=0;
         void F(int id,bool v=true)=>f[id]=v?Color.White:Color.Black;
@@ -85,7 +85,7 @@ internal static class RaidHealingTests
             buffs.DivinePurpose=false;F(92);Next();Check(ProductionTick()==9,"chain capped Glory precedes Shock");
             F(92,false);F(13,false);Skill(2,false);buffs.Infusion=false;
             for(int i=0;i<20;i++) {Next(.5);HOLY.Inst.ObserveHealing(f,t,10+now,raidBars:b);}
-            Check(ProductionTick()==0&&!HOLY.Inst.Raid.Sample.VirtueActive,"chain expired window stops moving Hand above60 percent");
+            Check(ProductionTick()==12&&!HOLY.Inst.Raid.Sample.VirtueActive,"chain expired window retains low-priority moving Hand fallback");
             F(10);Next();Check(ProductionTick()==11,"chain standing Flash remains available after window expiry");
         }
         foreach(bool virtueReady in new[]{false,true}) {
@@ -159,7 +159,7 @@ internal static class RaidHealingTests
         Next();var active=Observe();Check(active.VirtueActive&&active.VirtueRemaining==9,"new ready-to-cooldown opens nine seconds");
         Skill(2,false);Skill(6);F(10,false);buffs.HandOfDivinity=true;
         Check(Decide(sample:active).Key==12,"Virtue window releases Hand at75 while moving");
-        Check(Decide().Key==0,"no raid window preserves ordinary Hand outside60");
+        Check(Decide().Key==12,"moving fallback uses Hand outside60 without a raid window");
         Skill(2);F(13);Check(Decide(sample:active).Key==8,"two-charge Shock precedes window Hand");
         F(13,false);Skill(5);buffs.Infusion=true;Check(Decide(sample:active).Key==11,"infusion precedes window Hand");
         Skill(5,false);buffs.Infusion=false;

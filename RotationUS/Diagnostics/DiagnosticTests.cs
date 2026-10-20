@@ -412,6 +412,7 @@ internal static class DiagnosticTests
         count += FloatingWindowTests.Run();
         count += ArmsTests.Run();
         count += RetTests.Run();
+        count += HolyMasteryTests.Run();
         count += HolyTests.Run();
         count += HolyPurposeTests.Run();
         count += HolyPolicyTests.Run();

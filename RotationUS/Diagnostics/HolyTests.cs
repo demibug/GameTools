@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Windows.Forms;
@@ -24,8 +24,8 @@ internal static class HolyTests
             buff=new() {Infusion=false,HandOfDivinity=false,DivinePurpose=false};
             HOLY.Inst.Reset();
         }
-        // Legacy branch cases opt into healing Mastery; policy tests cover defaults.
-        var automatic=new HealingThresholds(AutoAuraMastery:true,AuraMasteryHasToll:true,RaidAutoAuraMastery:true);
+        // Mastery is enabled by default; sustained/severe cases require observed evidence.
+        var automatic=new HealingThresholds(RaidAutoAuraMastery:true);
         void Want(int key,string why,HolyCooldownContext? context=null) {var d=RaidTestFixture.Decide(f,buff,automatic,context);Check(d.Key==key,why+" actual="+d.Key+" "+d.Reason);}
         void ShieldSetup(bool raid=false) {
             Reset(raid);F(4,false);F(12);F(13);F(21);F(22);F(31);F(92);F(95);F(97);F(98);
@@ -323,9 +323,9 @@ internal static class HolyTests
         buff.Infusion=true;Skill(5);Want(13,"infusion does not indefinitely postpone needed wings");
         F(95);Want(13,"old unused layer point is ignored");F(95,false);
         buff.Infusion=false;
-        Skill(7,false);Skill(8);Want(14,"wings on cd -> mastery");
-        F(98);Want(14,"legacy active wings observation cannot block cooldown-based mastery");
-        buff.Infusion=null;Want(14,"unknown infusion cannot suppress configured healing mastery");
+        Skill(7,false);Skill(8);Want(8,"three below60 alone do not authorize Mastery");
+        F(98);Want(8,"legacy wings observation cannot create Mastery evidence");
+        buff.Infusion=null;Want(8,"unknown infusion does not create Mastery evidence");
         Skill(2);Skill(7);Want(13,"unknown infusion does not block needed wings");
         f[24]=Color.Orange;Want(13,"unknown toll cooldown does not block needed wings");
         Reset();Skill(2);Skill(7);Skill(8);
@@ -340,9 +340,9 @@ internal static class HolyTests
         foreach(var color in new[]{Color.White,Color.Black,Color.Orange}) {
             f[98]=color;Want(13,"removed wings aura does not affect ready group cooldown");
         }
-        f[27]=Color.Orange;Want(14,"mastery demand is independent of wings cooldown");
-        F(27);F(37,false);Want(14,"unusable wings does not block configured healing mastery");F(37);
-        Skill(7,false);Want(14,"wings confirmed on cooldown permits ready mastery during major aoe");
+        f[27]=Color.Orange;Want(14,"mastery demand is independent of wings cooldown",new(Mastery:new(SevereConfirmed:true)));
+        F(27);F(37,false);Want(14,"unusable wings does not block configured healing mastery",new(Mastery:new(SevereConfirmed:true)));F(37);
+        Skill(7,false);Want(14,"wings confirmed on cooldown permits ready mastery during major aoe",new(Mastery:new(SevereConfirmed:true)));
         F(38,false);Want(8,"unusable mastery skips to shock");F(38);
         F(19,false);Want(8,"no group cannot open wings from stale major group observations");
         Reset();buff.Infusion=true;Skill(5);Skill(2);Want(11,"consume infusion before shock");
@@ -411,7 +411,7 @@ internal static class HolyTests
         buff.HandOfDivinity=true;Want(13,"major pressure can activate wings even with a Hand proc");
         buff.HandOfDivinity=false;Want(13,"no infusion and no Hand uses ready wings");
         // Sending wings does not prove it granted instant casts.
-        Skill(7,false);buff.HandOfDivinity=null;Want(14,"unknown Hand never assumes instant Holy Light, major aoe can use ready mastery");
+        Skill(7,false);buff.HandOfDivinity=null;Want(0,"unknown Hand and stable below60 do not authorize instant Light or Mastery");
         buff.HandOfDivinity=true;Skill(8,false);Hp(8,.55);Member(2,.55);Want(12,"actual Hand acquisition and major injury after wings enable Holy Light");
         Reset();Member(2,.6);Member(3,.6);Member(4,.6);var t=new HealingThresholds();Check(HolyTriage.Analyze(f,false,t).Major,"party 3 below70 major");
         Check(HolyTriage.Single(.19,t)=="单体危急"&&HolyTriage.Single(.4,t)=="单体大掉血"&&HolyTriage.Single(.8,t)=="单体普通掉血"&&HolyTriage.Single(.95,t)=="轻微掉血，无需治疗","four single target classifications");
@@ -518,7 +518,7 @@ internal static class HolyTests
         settings.Stage("holy_i1",new(new(550,8),new(255,255,255)));
         raidMastery.Checked=false;
         var saved=DiagnosticLayout.Load(profiles.PathFor(ClassProfiles.Find(65)!));
-        if(saved.HolyThresholds.RaidAutoAuraMastery||!saved.HolyThresholds.AutoAuraMastery||settings.Rows["holy_i1"].Pending is null)
+        if(saved.HolyThresholds.RaidAutoAuraMastery||settings.Rows["holy_i1"].Pending is null)
             throw new Exception("Raid manual switch must persist without disabling party automation or losing pending buff selection");
         // Recreate the form to verify that loading a saved false does not
         // accidentally save the checkbox's default true over the preference.

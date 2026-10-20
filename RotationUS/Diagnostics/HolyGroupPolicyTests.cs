@@ -1,4 +1,4 @@
-﻿#nullable enable
+#nullable enable
 using System.Drawing;
 
 namespace RotationUS.Diagnostics;
@@ -9,7 +9,7 @@ internal static class HolyGroupPolicyTests
     {
         int count=0;
         var f=new Dictionary<int,Color>();
-        var t=new HealingThresholds(AuraMasteryHasToll:true);
+        var t=new HealingThresholds();
         var buff=new HolyBuffs {Infusion=false,HandOfDivinity=false};
         var confirmed=new HolyCooldownContext(Healing:new(new PartyTollReading(true),TollConfirmed:true));
         void Check(bool ok,string why) {if(!ok) throw new Exception("FAIL Holy group policy: "+why);count++;}
@@ -50,7 +50,7 @@ internal static class HolyGroupPolicyTests
                 Reset(raid,raid?4:3,.55);f[id]=color;
                 Check(Decide()==toll,"unavailable or unknown Virtue never holds ready Toll");
                 Skill(4,false);Check(Decide()==13,"unavailable Virtue never holds group Wings");
-                Skill(7,false);Check(Decide()==14,"unavailable Virtue never holds group Mastery");
+                Skill(7,false);Check(Decide()==8,"below60 without severe confirmation does not open Mastery");
                 Skill(8,false);Check(Decide()==8,"unavailable Virtue never holds direct healing");
             }
             Reset(raid,raid?4:3,.55);
@@ -137,7 +137,7 @@ internal static class HolyGroupPolicyTests
         Check(Decide(confirmed with{Sustained=true})==13,"three below70 with worsening permit Wings");
         Member(4,.75);Check(Decide(confirmed with{Sustained=true})==8,"two below70 cannot trigger Wings even with worsening");
         Reset(false,3,.65);Skill(9,false);Skill(4,false);
-        Check(Decide()==14,"stable three below70 retain Mastery rules without opening Wings");
+        Check(Decide()==8,"stable three below70 do not authorize Mastery or Wings");
         Skill(4);Check(Decide()==4,"stable three below70 retain ordinary Toll rules");
         Check(Decide(confirmed with{Sustained=true})==13,"confirmed worsening below70 retains Wings before ordinary Toll");
         Skill(9);Check(Decide(confirmed with{Sustained=true})==15,"Virtue remains before worsening Wings");
@@ -146,17 +146,20 @@ internal static class HolyGroupPolicyTests
         Check(Tick(0)==8,"Wings trend baseline uses direct healing");
         Hp(8,.65);for(int slot=2;slot<=4;slot++) Member(slot,.65);
         Check(Tick(.1)==8,"falling below70 alone does not bypass trend sampling");
+        Check(Tick(1)==8,"continuous sampling before Wings trend matures");
         Check(Tick(2.1)==13,"production trend confirms worsening and releases Wings below70");
         Hp(8,.75);for(int slot=2;slot<=4;slot++) Member(slot,.75);
         Check(Tick(2.7)==8,"recovery above70 cancels Wings even while previous trend is retained");
         Reset(false,3,.83);Skill(9,false);Skill(4,false);Skill(8,false);
         Check(Tick(0)==8,"above70 worsening baseline");
         Hp(8,.72);for(int slot=2;slot<=4;slot++) Member(slot,.72);
+        Tick(1);
         Check(Tick(2.1)==8,"confirmed worsening above70 does not open party Wings");
         Reset(false,3,.65);Skill(9,false);Skill(4,false);Skill(8,false);
-        Check(Tick(0)==8&&Tick(2.1)==8,"stable three below70 never become Wings demand through elapsed time alone");
+        Check(Tick(0)==8&&Tick(1)==8&&Tick(2.1)==8,"stable three below70 never become Wings demand through elapsed time alone");
         Reset(false,3,.8);Skill(9,false);Skill(4,false);Skill(8,false);
         Tick(0);Hp(8,.65);for(int slot=2;slot<=4;slot++) Member(slot,.65);f[55]=Color.Orange;
+        Tick(1);
         Check(Tick(2.1)==8,"unknown member prevents trend confirmation for Wings below70");
 
         // Raid uses four-person gates, while single rescue is removed
