@@ -641,7 +641,7 @@ internal sealed class DiagnosticForm : Form
             if (ClassProfiles.Identify(screenshot.At(layout.Markers[1])) != identity)
                 throw new InvalidOperationException("职业 / 专精已变化，请等待识别后重新取点。");
             using var picker = new SpecialPointPicker(screenshot.Image, bounds, activeProfile.DisplayName,
-                furyKey is not null && activeProfile.SpecId == 70 ? $"{RetBuffs.Label(furyKey)}：{RetBuffs.Rule(furyKey)}；目标减益必须跟随当前目标" : furyKey is not null && activeProfile.SpecId == 65 ? $"{HolyBuffs.Label(furyKey)}：{HolyBuffs.Rule(furyKey,HolyBuffs.ExpiryMode(furyKey,layout.SpecialPoints.GetValueOrDefault(furyKey)))}；选择稳定的状态指示区域，避开图标边缘" : furyKey is not null && activeProfile.SpecId == 71 ? $"{ArmsBuffs.Label(furyKey)}：{ArmsBuffs.Rule(furyKey)}；请采集指定状态的参考色" : furyKey is not null ? $"{FuryBuffs.Label(furyKey)}："+(FuryBuffs.UsesTimeColor(furyKey)?"请在临近结束时取非黑参考色；纯黑=缺失":"纯黑=缺失；任何非黑=存在；所取颜色仅记录") : activeProfile.SpecId == 73 ? "纯黑或等于取色 RGB 时，判定需要施放" : "沿用原复仇代码的非黑像素判断");
+                furyKey is not null && activeProfile.SpecId == 70 ? $"{RetBuffs.Identity(furyKey,RetBuffs.IsRadiant(layout,screenshot.At))}；{RetBuffs.Rule(furyKey)}" : furyKey is not null && activeProfile.SpecId == 65 ? $"{HolyBuffs.Label(furyKey)}：{HolyBuffs.Rule(furyKey,HolyBuffs.ExpiryMode(furyKey,layout.SpecialPoints.GetValueOrDefault(furyKey)))}；选择稳定的状态指示区域，避开图标边缘" : furyKey is not null && activeProfile.SpecId == 71 ? $"{ArmsBuffs.Label(furyKey)}：{ArmsBuffs.Rule(furyKey)}；请采集指定状态的参考色" : furyKey is not null ? $"{FuryBuffs.Label(furyKey)}："+(FuryBuffs.UsesTimeColor(furyKey)?"请在临近结束时取非黑参考色；纯黑=缺失":"纯黑=缺失；任何非黑=存在；所取颜色仅记录") : activeProfile.SpecId == 73 ? "纯黑或等于取色 RGB 时，判定需要施放" : "沿用原复仇代码的非黑像素判断");
             if (picker.ShowDialog() != DialogResult.OK || picker.Selection is not { } selected) return;
             if (GameCapture.ClientSize(game) != size)
                 throw new InvalidOperationException("选点过程中游戏尺寸变化，请重新选取。");
@@ -829,9 +829,18 @@ internal sealed class DiagnosticForm : Form
     {
         if (layout is null) return;
         lastUnknownReason = "";
+        bool radiant=layout.SpecId==70&&RetBuffs.IsRadiant(layout,next.At);
+        if(layout.SpecId==70&&render) retPoints.SetRadiant(radiant);
         for (int index = 0; index < fields.Length; index++)
         {
             var field = fields[index]; var row = grid.Rows[index];
+            if(render&&layout.SpecId==70&&field.Id=="105") SetCell(row,1,RetBuffs.Label("ret_wings",radiant));
+            bool unused=radiant&&FuryBuffs.SpecialKey(layout,field)=="ret_sentence";
+            if(render&&row.Visible==unused) {
+                if(unused&&grid.CurrentCell?.OwningRow==row) grid.CurrentCell=null;
+                row.Visible=!unused;
+            }
+            if(unused) continue;
             SamplePoint? point = FuryBuffs.Point(layout, field);
             if (point is null) {
                 if (!render) continue;
@@ -841,7 +850,7 @@ internal sealed class DiagnosticForm : Form
                 continue;
             }
             var color = next.At(point);
-            string rgb = Colors.Rgb(color), value = live ? layout.SpecId == 70 ? RetBuffs.Decode(layout,field,color) : layout.SpecId == 65 ? HolyBuffs.Decode(layout,field,color) : layout.SpecId == 71 ? ArmsBuffs.Decode(layout, field, color,next.At) : FuryBuffs.Decode(layout, field, color,next.At) : $"未知 · {reason}";
+            string rgb = Colors.Rgb(color), value = live ? layout.SpecId == 70 ? RetBuffs.Decode(layout,field,color,radiant) : layout.SpecId == 65 ? HolyBuffs.Decode(layout,field,color) : layout.SpecId == 71 ? ArmsBuffs.Decode(layout, field, color,next.At) : FuryBuffs.Decode(layout, field, color,next.At) : $"未知 · {reason}";
             string coordinates = $"{point.X}, {point.Y}";
             string signature = $"{rgb}|{value}";
             bool hadValue = lastValues.TryGetValue(field.Id, out var old);

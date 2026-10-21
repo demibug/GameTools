@@ -23,7 +23,7 @@ internal sealed class RetCombatLog
     {
         if(layout.SpecId!=70) return;
         RecordValues(i=>sample.At(layout.Frames[i-1]),i=>sample.At(layout.Bars[i-1]),live,executing,reason,
-            string.Join(";",RetBuffs.Points.Select(p=>p.Key+"="+(layout.SpecialPoints.TryGetValue(p.Key,out var point)&&point.Enabled?Rgb(sample.At(point.Point)):"未配置"))));
+            string.Join(";",RetBuffs.ActivePoints(RetBuffs.IsRadiant(layout,sample.At)).Select(p=>p.Key+"="+(layout.SpecialPoints.TryGetValue(p.Key,out var point)&&point.Enabled?Rgb(sample.At(point.Point)):"未配置"))));
     }
     private static string Rgb(Color c)=>$"{c.R},{c.G},{c.B}";
     internal void RecordValues(Func<int,Color> frame,Func<int,Color> bar,bool live,bool executing,string reason,string buffs="")
@@ -32,7 +32,7 @@ internal sealed class RetCombatLog
         string line=$"有效采样={live}；执行开启={executing}；执行判断={reason}；"+
             (live?"":"无效采样，以下原始颜色不可用于决策；")+
             string.Join(";",Enumerable.Range(1,50).Select(i=>$"F{i}={Rgb(frame(i))}"))+"；"+
-            string.Join(";",Enumerable.Range(1,42).Select(i=>$"B{i}={Rgb(bar(i))}"))+"；"+buffs;
+            string.Join(";",Enumerable.Range(1,43).Select(i=>$"B{i}={Rgb(bar(i))}"))+"；"+buffs;
         if(line==last) return;
         try {
             Directory.CreateDirectory(store.DefaultDirectory);

@@ -91,7 +91,17 @@ local targetEvent=frames[#frames]
 local function f(i,r,g,b) assert(rgb(HijiAddon['texture_'..i],r,g or r,b or r),'frame '..i) end
 local function flag(i,r,g,b) assert(rgb(HijiAddon['bar_'..i]:GetStatusBarTexture(),r,g or r,b or r),'bar '..i) end
 HijiAddon.ClearDiagnosticData();HijiAddon.UpdateCjq()
-f(19,70/255,4/255,2/255);f(50,1);f(5,0);f(9,1);flag(28,1)
+f(19,70/255,5/255,2/255);f(50,1);f(5,0);f(9,1);flag(28,1)
+-- Radiant Glory observes Wake's own cooldown independently of its overridden button.
+unknown[458359]=nil;unknown[343527]=true
+overrides[255937]=427453;cooldowns[255937]=12;cooldowns[427453]=0
+HijiAddon.UpdateCjq();flag(11,1);flag(9,0);flag(43,1);f(24,1);f(30,0)
+cooldowns[255937]=0;cooldowns[61304]=1
+HijiAddon.UpdateCjq();flag(43,0);f(16,0)
+cooldowns[255937]='nil';HijiAddon.UpdateCjq();flag(43,1,.5,0)
+cooldowns[255937]=0;overrides[255937]=429826
+HijiAddon.UpdateCjq();flag(43,0);flag(7,1)
+unknown[458359]=true;unknown[343527]=nil;overrides={};cooldowns={}
 -- IsSpellUsable returns TWO booleans. Insufficient power must never invert the first.
 power=1;insufficient[85256]=true;insufficient[53385]=true;insufficient[85673]=true
 HijiAddon.UpdateCjq();f(27,0);f(29,0);flag(22,0)
@@ -265,7 +275,7 @@ assert(HijiAddon.bar_1.value==0)
 -- Recover sources; secret interruptibility is rendered natively, not rejected as unknown.
 power=3;health=.4;overrides[255937]=255937
 tracking={{name='战场军官',active=true},{name='餐饮供应商',active=true}}
-targetCast=true;locked=secret(false);items[5512]=1;items[211879]=1
+targetCast=true;locked=secret(false);items[5512]=1;items[244838]=1
 HijiAddon.UpdateCjq();f(10,1);f(11,1);f(12,1);f(13,1);f(14,1);f(15,1)
 for _,channel in ipairs({false,true}) do
     targetCast=not channel;targetChannel=channel
@@ -288,6 +298,35 @@ HijiAddon.ClearDiagnosticData();assert(not threshold.shown and not flagBar.shown
 HijiAddon.UpdateCjq();assert(threshold.shown and HijiAddon.bar_6.shown)
 ''')
 program = (Path(__file__).parent.parent / "Program.cs").read_text(encoding="utf-8-sig")
+# Pin the reviewed identities and ensure both applications keep the same catalog.
+expected_auras = [
+    ("ret_art", "战争艺术", 406086, 406064, "player"),
+    ("ret_legacy", "苍穹之遗", 387178, 387170, "player"),
+    ("ret_free", "圣光裁决", 433732, 425518, "player"),
+    ("ret_ruling", "公允裁定", 432629, 432626, "player"),
+    ("ret_wings", "复仇之怒", 454351, 458359, "player"),
+    ("ret_sentence", "处决宣判", 343527, 343527, "target"),
+    ("ret_expurgation", "异端逐除", 383346, 383344, "target"),
+]
+cs = (Path(__file__).with_name("RetObservation.cs")).read_text(encoding="utf-8-sig")
+for i, (key, name, aura_id, talent_id, unit) in enumerate(expected_auras, 1):
+    entry = runtime.globals().HijiAddon.retAuras[i]
+    assert (entry.key, entry.name, entry.auraID, entry.talentID, entry.unit) == (key, name, aura_id, talent_id, unit)
+    assert f'new("{key}","{name}",{aura_id},{talent_id},"{unit}",' in cs
+runtime.execute(r'''
+local savedPrint=print
+local lines={}
+print=function(line) table.insert(lines,line) end
+C_Spell.GetSpellName=function(id) return "client-name-"..id end
+assert(HijiAddon.HandleRetCommand("ret auras"))
+assert(#lines==9 and lines[2]:find("client%-name%-406086") and lines[6]:find("454351"))
+assert(not HijiAddon.HandleRetCommand("ret unrelated"))
+C_Spell.GetSpellName=function() error("unavailable") end
+assert(HijiAddon.HandleRetCommand("ret auras"))
+C_Spell.GetSpellName=function() return secret("restricted") end
+assert(HijiAddon.HandleRetCommand("ret auras"))
+print=savedPrint
+''')
 for action,key in [(1,"7"),(2,"8"),(3,"9")]:
     assert re.search(rf"CheckPt\({action}\)\)\s*\{{\s*SimulateKeyPress\(VK_{key}\)",program),action
 punctuation = ["FangkuohaoZuo", "FangkuohaoYou", "Xiegang", "Fenhao", "Danyinhao", "Juhao"]
@@ -295,4 +334,5 @@ for action in range(7, 31):
     key = punctuation[(action - 7) % 6] if action < 19 else ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Jian", "Deng"][action - 19]
     method = "SimulateKeyPress" if action < 13 else "SimulateShiftKeyPress"
     assert re.search(rf"CheckPt\({action}\)\)\s*\{{\s*{method}\(VK_{key}\)", program), action
-print("PASS: Retribution v4 collector; 18 spell/form paths and 198 dual-return usability/resource cases; independent cooldown failure/recovery; secret resources/native display, overrides, own CD/GCD, charges, unknown/recovery, Hammer of Justice 10-yard gates and engaged AoE count, interruptability, items, target epoch, strict 60/80 health thresholds, instant Flash, cleanup and 27 keyboard mappings.")
+print("PASS: Retribution v5 collector; Radiant Glory and independent base Wake cooldown under normal/free overrides; 18 spell/form paths and 198 dual-return usability/resource cases; independent cooldown failure/recovery; secret resources/native display, overrides, own CD/GCD, charges, unknown/recovery, Hammer of Justice 10-yard gates and engaged AoE count, interruptability, items, target epoch, strict 60/80 health thresholds, instant Flash, cleanup and 27 keyboard mappings.")
+print("PASS: 7 aura/talent identities match across Lua and C#; client-name diagnostics tolerate unavailable/restricted names.")

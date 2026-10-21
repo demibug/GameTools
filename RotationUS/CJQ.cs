@@ -2,7 +2,7 @@
 using System.Drawing;
 using RotationUS.Diagnostics;
 
-internal enum RetStage { Idle, Prepare, Wings, Sentence, Clear }
+internal enum RetStage { Idle, Prepare, Wings, Sentence, Clear, RadiantPrepare, RadiantReady }
 internal sealed record RetRequest(RetStage Stage=RetStage.Idle,double Started=0,double SentAt=0,bool Sent=false,int Epoch=0);
 internal sealed record RetDecision(int Key,string Reason,string Branch,RetRequest Request);
 
@@ -33,16 +33,21 @@ internal sealed class CJQ
         RetDecision Result(int key,string reason)=>new(key,reason,branch,state);
         RetDecision Cancel(string reason) { state=new(RetStage.Clear);return Result(F(10)==true?28:0,reason); }
         if(!f.TryGetValue(19,out var sig)||sig.ToArgb()!=RetBuffs.Signature.ToArgb()||F(50)!=true)
-            return Cancel("等待惩戒v4有效协议，请 /reload") with {Key=0};
-        if(F(10)==false) state=new();
-        if(F(10) is null&&state.Stage!=RetStage.Idle) state=new(RetStage.Clear);
+            return Cancel("等待惩戒v5有效协议，请 /reload") with {Key=0};
+        bool radiant=B(11)==true;
+        bool radiantState=state.Stage is RetStage.RadiantPrepare or RetStage.RadiantReady;
+        if(radiant&&!radiantState||!radiant&&radiantState) state=new();
+        if(!radiant&&F(10)==false) state=new();
+        if(!radiant&&F(10) is null&&state.Stage!=RetStage.Idle) state=new(RetStage.Clear);
         if(F(1)!=true||F(2)!=true) {
-            if(F(10)==true) return Cancel("脱战/死亡/骑乘，取消军官");
+            if(radiant) state=new();
+            else if(F(10)==true) return Cancel("脱战/死亡/骑乘，取消军官");
             return Result(F(11)==true?29:0,"等待存活、战斗且未骑乘");
         }
         // Cancel before self-rescue too; a temporarily invalid target must not keep a request alive.
         int? epoch=RetBuffs.TargetEpoch(b);
-        if(state.Stage!=RetStage.Idle&&(F(3)!=true||epoch is null||state.Epoch!=epoch)) state=new(RetStage.Clear);
+        if(state.Stage!=RetStage.Idle&&(F(3)!=true||epoch is null||state.Epoch!=epoch))
+            state=radiant?new():new(RetStage.Clear);
         if(f.TryGetValue(6,out var hp)&&hp.R==hp.G&&hp.G==hp.B&&hp.R<=102) {
             if(F(14)==true) return Result(22,"治疗石：血量≤40%");
             if(F(15)==true) return Result(23,"治疗药水：血量≤40%");
@@ -71,10 +76,11 @@ internal sealed class CJQ
             if(B(39) is null) return Result(0,"等待责难资源状态");
             return Result(21,"责难：食物标记请求");
         }
-        if(F(3)!=true) return F(10)==true?Cancel("无有效敌对目标，取消军官"):Result(0,"等待有效敌对目标");
-        if(B(11)!=false||B(12)!=true||B(13)!=true)
+        if(F(3)!=true) return !radiant&&F(10)==true?Cancel("无有效敌对目标，取消军官"):Result(0,"等待有效敌对目标");
+        if(B(11) is null||B(12)!=true||B(13)!=true)
             return state.Stage!=RetStage.Idle?Cancel("天赋来源变化，取消军官请求"):
-                Result(0,"等待圣殿＋自动十字军天赋（不支持光辉荣耀），请核验天赋");
+                Result(0,"等待圣殿＋自动十字军天赋，请核验天赋");
+        if(radiant) return DecideRadiant(f,b,buff,state,now);
         if(F(10) is null) return Result(0,"等待军官标记状态");
         if(F(10)==true&&state.Stage==RetStage.Idle) {
             if(epoch is null||B(8) is null||B(9) is null) return Result(0,"等待爆发已学状态/目标版本");
@@ -151,6 +157,90 @@ internal sealed class CJQ
         foreach(var rule in rules) {
             if(rule.Condition==true) return Result(rule.Key,rule.Reason);
             if(rule.Condition is null) return Result(0,"等待状态："+rule.Reason);
+        }
+        return Result(0,"暂无合法输出技能");
+    }
+
+    // Radiant Glory, Templar and Crusading Strikes; no tier-set assumptions.
+    // Tracking flags and inactive Wings/Sentence cooldowns never drive this branch.
+    private static RetDecision DecideRadiant(Dictionary<int,Color> f,Dictionary<int,Color> b,
+        RetBuffs buff,RetRequest state,double now)
+    {
+        bool? F(int id)=>f.TryGetValue(id,out var c)?FuryBuffs.Boolean(c):null;
+        bool? B(int id)=>b.TryGetValue(id,out var c)?FuryBuffs.Boolean(c):null;
+        bool? Skill(int i)=>F(20+i*2)&F(21+i*2)&B(30+i)&F(39+i);
+        string branch="光辉荣耀 · "+(F(5)==true?"多目标":F(5)==false?"单体":"目标数未知");
+        RetDecision Result(int key,string reason)=>new(key,reason,branch,state);
+        if(B(9)!=false) return Result(0,"光辉荣耀分支要求未学处决宣判，请核验天赋");
+        if(B(43)==true) state=new();
+        if((F(4)&F(16))!=true) return Result(0,"等待施法结束/公共冷却");
+        if(F(5) is null) return Result(0,"等待附近敌人数");
+        if(F(9)!=true) return Result(0,"等待神圣能量来源");
+        // The actual replacement form is authoritative; the external point only supplies expiry.
+        bool? free=B(7);
+        bool? hammer=Skill(2)&B(6);
+        bool? urgent=hammer&free&(buff.FreeHammer.Present==true?RetBuffs.RadiantExpiry(buff.FreeHammer):null);
+        if(urgent==true) return Result(12,"免费圣光之锤：剩余≤2GCD");
+        if(urgent is null) return Result(0,"等待免费大锤形态/临期色（≤2GCD）");
+
+        RetDecision? Finish()
+        {
+            bool? normal=hammer&!free;
+            if(normal==true) return Result(12,"灰烬后的常规圣光之锤");
+            if(normal is null) return Result(0,"等待圣光之锤形态/免费触发");
+            bool? release=hammer&free&((buff.Wings.Present&RetBuffs.RadiantExpiry(buff.Wings))|
+                !buff.Ruling.Present|RetBuffs.RadiantExpiry(buff.Ruling));
+            if(release==true) return Result(12,"免费圣光之锤：复仇之怒临期/公允裁定临期或消失");
+            if(release is null) return Result(0,"等待复仇之怒/公允裁定临期色，请重配GCD阈值");
+            bool? legacy=B(15)==false?false:buff.Legacy.Present;
+            if(F(5)==true&&legacy is null) return Result(0,"等待苍穹之遗");
+            int spender=F(5)==true&&legacy!=true?4:3;
+            bool? spend=Skill(spender);
+            if(spend==true) return Result(spender==3?11:9,spender==3?"最终审判":"神圣风暴");
+            if(spend is null) return Result(0,"等待终结技可用性/资源/距离");
+            return null;
+        }
+
+        // Base cooldown is observed independently of Wake's replacement and usability.
+        bool? capped=F(8)&B(43);
+        if(capped==true&&Finish() is { } cappedAction) return cappedAction;
+        if(capped is null) return Result(0,"等待满圣能/灰烬自身冷却");
+        bool? wake=Skill(5)&!B(6);
+        if(wake is null) return Result(0,"等待灰烬觉醒形态/可施放状态");
+        if(wake==true) {
+            // Try Expurgation once per Wake preparation; actual cooldown or timeout
+            // ends preparation. Sending a key never fabricates the target debuff.
+            if(state.Stage!=RetStage.RadiantReady&&B(10)!=false&&buff.Expurgation.Present!=true) {
+                int? epoch=RetBuffs.TargetEpoch(b);
+                if(epoch is null) return Result(0,"等待当前目标版本");
+                if(state.Stage!=RetStage.RadiantPrepare)
+                    state=new(RetStage.RadiantPrepare,now,Epoch:epoch.Value);
+                if(now-state.Started<2) {
+                    if(B(10) is null||buff.Expurgation.Present is null)
+                        return Result(0,"等待灰烬前异端逐除状态（最多2秒）");
+                    if(state.Sent) {
+                        if(F(34)!=false) return Result(0,"等待准备公正之剑进入冷却（最多2秒）");
+                    } else if(Skill(7)!=false) {
+                        if(Skill(7)!=true) return Result(0,"等待准备公正之剑（最多2秒）");
+                        state=state with {Sent=true,SentAt=now};
+                        return Result(14,"灰烬前尝试公正之剑建立异端逐除");
+                    }
+                }
+                state=state with {Stage=RetStage.RadiantReady};
+            }
+            return Result(12,"灰烬觉醒：自动触发复仇之怒");
+        }
+        bool? toll=Skill(6);
+        if(toll==true) return Result(13,"圣洁鸣钟：自动");
+        if(toll is null) return Result(0,"等待圣洁鸣钟状态");
+        bool? art=Skill(7)&(B(18)==false?false:buff.Art.Expiring);
+        if(art==true) return Result(14,"公正之剑：战争艺术两层");
+        if(art is null) return Result(0,"等待战争艺术两层/公正之剑状态");
+        if(Finish() is { } finisher) return finisher;
+        foreach(var entry in new[]{(Index:7,Key:14,Name:"公正之剑"),(Index:8,Key:10,Name:F(17)==true?"愤怒之锤（审判替换）":"审判")}) {
+            bool? usable=Skill(entry.Index);
+            if(usable==true) return Result(entry.Key,entry.Name);
+            if(usable is null) return Result(0,"等待"+entry.Name+"状态");
         }
         return Result(0,"暂无合法输出技能");
     }

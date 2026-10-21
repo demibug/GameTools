@@ -91,9 +91,11 @@ internal sealed class DiagnosticLayout
         if (SpecialPoints is null || ThunderMode is not ("presence-only" or "exact-stacks")) throw new InvalidDataException("特殊点配置格式不正确。");
         foreach (var (key,setting) in SpecialPoints)
         {
-            if (setting is null || setting.Point is null || setting.Comparison is not ("presence" or "expiring")) throw new InvalidDataException("特殊点判断类型不正确。");
-            if (setting.Comparison=="expiring" && setting.ReferenceColor == new SampleColor(0, 0, 0)) throw new InvalidDataException("临近结束参考色必须非黑。");
-            if (setting.Enabled && setting.Comparison == "expiring" && setting.ReferenceColor is null) throw new InvalidDataException("请先采集临近结束参考色。");
+            if (setting is null || setting.Point is null || setting.Comparison is not ("presence" or "expiring" or "ret-gcd")) throw new InvalidDataException("特殊点判断类型不正确。");
+            if (setting.Comparison=="ret-gcd"&&!RetBuffs.UsesGcdColor(key)) throw new InvalidDataException("GCD临期色仅用于圣光裁决（免费机会）、复仇之怒与公允裁定。");
+            bool timed=setting.Comparison is "expiring" or "ret-gcd";
+            if (timed && setting.ReferenceColor == new SampleColor(0, 0, 0)) throw new InvalidDataException("临近结束参考色必须非黑。");
+            if (setting.Enabled && timed && setting.ReferenceColor is null) throw new InvalidDataException("请先采集临近结束参考色。");
             if(setting.Enabled&&setting.HandExpiryMode&&(setting.ReferenceColor is null||setting.ReferenceColor==new SampleColor(0,0,0)))
                 throw new InvalidDataException("神性之手临期模式需要非黑参考色。");
             if(setting.Enabled&&key=="holy_purpose"&&(setting.ReferenceColor is null||setting.ReferenceColor==new SampleColor(0,0,0)))

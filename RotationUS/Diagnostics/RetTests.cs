@@ -195,7 +195,7 @@ internal static class RetTests
         F(10,false);Check(Decide(active.Request,.1).Key==12,"人工取消立即恢复常规输出");
         F(10);b[14]=Color.FromArgb(2,70,1);Check(Decide(active.Request,.2).Key==28,"换目标取消旧请求");
         Reset();Dps();F(10);F(3,false);Check(Decide(active.Request,.1).Key==28,"失去目标取消请求");
-        Reset();Dps();F(10);B(11);Check(Decide(active.Request,.1).Key==28,"天赋变化取消进行中请求");
+        Reset();Dps();F(10);B(11);Check(Decide(active.Request,.1).Key==0,"未适配的光辉荣耀＋处决构筑不继续旧请求");
         Reset();Dps();F(10);F(1,false);Want(28,"脱战清理军官");
         Reset();Dps();F(10);f[19]=Color.Black;Check(Decide(active.Request,.1).Key==0,"旧协议不能发键或清理键");
         Reset();Dps();F(10);B(8,false);B(9,false);Want(28,"未学爆发跳过并清理请求");
@@ -203,6 +203,75 @@ internal static class RetTests
         var states=new Dictionary<int,bool>();CJQ.Inst.Process(f,b,states);
         Check(states.Keys.SequenceEqual(new[]{28}),"停机/重启清除历史标记请求");
         Check(new[]{0x31,0x32,0x33,0x34,0x35,0x36,0x37,0x38,0x39,0x30,0xDB,0xDD,0xBA,0xDE,0xDC,0xBE,0xBD,0xBB}.All(CJQ.Inst.skipKeys.Contains),"所有绑定键让出手动操作");
+        // Radiant Glory without tier sets or Execution Sentence.
+        void Radiant(bool aoe=false) { Reset(aoe);B(11);B(9,false);B(43); }
+        Radiant();Dps();B(43,false);Want(12,"光辉荣耀自动灰烬，不等军官");
+        F(10);Want(12,"军官开启也不发送主动翅膀/处决/清标记");
+        f[10]=Color.Orange;f[18]=Color.Orange;f[20]=Color.Orange;f[22]=Color.Orange;f[49]=Color.Orange;
+        b[8]=Color.Orange;b[16]=Color.Orange;b[28]=Color.Orange;buff.Sentence=default;
+        Want(12,"新构筑独立于军官、主动翅膀冷却、处决减益和翅膀距离");
+        Check(Decide(new(RetStage.Wings,0,0,true,1)).Key==12,"切换构筑丢弃旧翅膀请求");
+        Skill(5,false);Want(13,"灰烬不可用时接鸣钟");
+        Skill(6,false);buff.Art=O(true,true);Want(14,"两层战争艺术优先普通消耗");
+        buff.Art=O(true);Want(11,"普通单体最终审判");
+        F(7,false);Want(11,"神圣意志免费可用时不硬性要求3圣能");
+        B(33,false);Want(14,"实际资源不足才回退公正之剑");
+        Skill(7,false);Want(10,"公正之剑不可用回退审判");
+        F(17);Want(10,"替换后的愤怒之锤沿用审判键");
+        Radiant();Dps();F(8);Want(11,"灰烬自身冷却中满圣能先消耗");
+        B(43,false);Want(12,"灰烬自身就绪时满圣能不挡灰烬");
+        b[43]=Color.Orange;Want(0,"满圣能但灰烬自身冷却未知不猜测");
+        Radiant();Dps();B(6);Skill(2);F(8);Want(12,"满圣能消耗列表优先普通大锤");
+        F(8,false);Want(13,"非满圣能普通大锤不抢鸣钟");
+        Skill(6,false);buff.Art=O(true,true);Want(14,"非满圣能两层战争艺术先于普通大锤");
+        buff.Art=O();Want(12,"其后消耗普通大锤");
+        foreach(bool aoe in new[]{false,true}) {
+            Radiant(aoe);Skill(aoe?4:3);F(8);Want(aoe?9:11,"满圣能选择无套装终结技");
+            F(8,false);Want(aoe?9:11,"普通消耗使用相同目标规则");
+        }
+        Radiant(true);Skill(3);Skill(4);buff.Legacy=O(true);Want(11,"群体苍穹之遗优先最终审判");
+        buff.Legacy=default;Want(0,"群体苍穹之遗未知不猜测");
+        Radiant();Dps();Skill(2);B(6);B(7);buff.FreeHammer=O(true,true);buff.Ruling=O(true);
+        Want(12,"免费锤临期抢在鸣钟之前");
+        buff.FreeHammer=O(true);Want(13,"免费锤未临期先鸣钟");
+        Skill(6,false);Skill(7,false);buff.Sentence=O(true,true);
+        Want(11,"新构筑不因旧处决点临期提前打免费锤");
+        buff.Wings=O(true,true);Want(12,"征伐临期释放免费锤");
+        buff.Wings=O();buff.Ruling=O(true,true);Want(12,"公允裁定临期释放免费锤");
+        buff.Ruling=O();Want(12,"公允裁定消失不等主动翅膀冷却");
+        buff.Ruling=O(true);buff.FreeHammer=new(true,true,"固定点（需重配GCD临期色）");
+        Want(0,"旧3秒配置不能冒充2GCD配置");
+        buff.FreeHammer=O(true);buff.Ruling=new(true,true,"固定点（需重配GCD临期色）");
+        Want(0,"旧公允裁定存在色不能冒充临期色");
+        buff.Ruling=O(true);B(6,false);Skill(5,false);Want(11,"免费大锤必须实际替换灰烬按钮");
+        foreach(var entry in new[]{(Index:2,Key:12),(Index:3,Key:11),(Index:4,Key:9),(Index:5,Key:12),(Index:6,Key:13),(Index:7,Key:14),(Index:8,Key:10)}) {
+            Radiant(entry.Index==4);Skill(entry.Index);
+            if(entry.Index==2) B(6);
+            Want(entry.Key,"光辉荣耀技能可用："+entry.Index);
+            F(39+entry.Index,false);Want(0,"光辉荣耀技能10码外不发键："+entry.Index);
+            f[39+entry.Index]=Color.Orange;Want(0,"光辉荣耀距离未知不发键："+entry.Index);
+            F(39+entry.Index);B(30+entry.Index,false);Want(0,"光辉荣耀资源不足不发键："+entry.Index);
+            B(30+entry.Index);f[21+entry.Index*2]=Color.Orange;Want(0,"光辉荣耀可用性未知不发键："+entry.Index);
+        }
+        Radiant();Dps();B(43,false);buff.Expurgation=O();
+        var radiantPrep=Decide();Check(radiantPrep.Key==14,"灰烬前先建立异端逐除");
+        Check(Decide(radiantPrep.Request,.1).Key==0,"准备发键不当作成功也不重复发送");
+        F(34,false);var radiantReady=Decide(radiantPrep.Request,.2);
+        Check(radiantReady.Key==12,"公正之剑实际冷却确认后进入灰烬");
+        F(34);Check(Decide(radiantReady.Request,.3).Key==12,"异端仍黑且公正之剑重置不重复准备");
+        B(43);B(6);Skill(2);F(8);
+        var afterWake=Decide(radiantReady.Request,.4);
+        Check(afterWake.Key==12&&afterWake.Request.Stage==RetStage.Idle,"灰烬实际冷却即清除准备，即使优先发送满能大锤");
+        Radiant();Dps();B(43,false);buff.Expurgation=default;var waiting=Decide();
+        Check(waiting.Key==0&&Decide(waiting.Request,2).Key==12,"未配异端最多等2秒，不永久卡住");
+        b[14]=Color.FromArgb(2,70,1);
+        Check(Decide(waiting.Request,3).Request.Started==3,"换目标重新建立有限准备窗口");
+        F(3,false);Check(Decide(waiting.Request,.5).Request.Stage==RetStage.Idle,"失去目标清除准备");
+        Radiant();Dps();F(16,false);Want(0,"光辉荣耀伤害等待GCD");
+        F(11);F(12);Skill(9);Want(21,"光辉荣耀食物责难沿用现有逻辑");
+        F(11,false);B(20);B(25);B(26);Want(3,"光辉荣耀圣佑术仍不等GCD");
+        f[6]=Color.FromArgb(102,102,102);F(14);Want(22,"光辉荣耀物品自救先于循环");
+        Radiant();Dps();f[19]=Color.FromArgb(70,4,2);Want(0,"v5明确拒绝缺少灰烬基础冷却的v4");
         using var pattern=DiagnosticTests.Pattern(1);
         var layout=Calibration.Find(pattern,new Size(1600,900));layout.SpecId=70;
         // Actual sampling/dispatch lifecycle with synthetic pixels and no SendInput.
@@ -237,16 +306,40 @@ internal static class RetTests
             runner.Stop();Check(CJQ.Inst.Request.Stage==RetStage.Clear,"停机取消爆发");
             Begin();Tick(profile:ClassProfiles.Find(65));
             Check(!runner.Enabled&&CJQ.Inst.Request.Stage==RetStage.Clear,"换专精停机并清请求");
+            Radiant();Dps();B(10,false);B(15,false);B(17,false);B(18,false);B(43,false);
+            CJQ.Inst.Buffs=buff;F(10);runner.Start(ret);Tick(now:2);
+            Check(sent.Keys.SequenceEqual(new[]{12}),"实际采样执行链新构筑启动直接灰烬，忽略旧军官");
+            foreground=(IntPtr)99;before=calls;Tick(now:2.1);
+            Check(calls==before,"光辉荣耀失焦不发键");
+            foreground=game.Handle;Tick(now:2.2);
+            Check(sent.Keys.SequenceEqual(new[]{12}),"光辉荣耀回前台不恢复旧翅膀流程");
+            runner.Stop();
         }
+        int[] expectedAuraIds={406086,387178,433732,432629,454351,343527,383346};
+        int[] expectedTalentIds={406064,387170,425518,432626,458359,343527,383344};
+        Check(RetBuffs.Auras.Select(a=>a.AuraId).SequenceEqual(expectedAuraIds),"七个光环ID及字段顺序固定");
+        Check(RetBuffs.Auras.Select(a=>a.TalentId).SequenceEqual(expectedTalentIds),"光环ID与天赋ID独立");
+        Check(RetBuffs.ActivePoints(true).Count()==6&&!RetBuffs.ActivePoints(true).Any(p=>p.Key=="ret_sentence"),"当前构筑只显示六项");
+        Check(RetBuffs.Identity("ret_wings").Contains("454351")&&RetBuffs.Identity("ret_wings").Contains("462048"),"灰烬增益与被动替换技能明确区分");
+        Check(RetBuffs.Identity("ret_wings",false).Contains("31884")&&!RetBuffs.Identity("ret_wings",false).Contains("454351"),"旧构筑保留主动复仇之怒ID");
+        Check(RetBuffs.Identity("ret_free").Contains("433732")&&RetBuffs.Identity("ret_free").Contains("433674"),"免费机会与叠层明确区分");
+        Check(RetBuffs.Identity("ret_expurgation").Contains("目标上自己施加的减益"),"异端逐除归属说明");
         foreach(var p in RetBuffs.Points) {
             var c=new SampleColor(144,92,18);
-            layout.SpecialPoints[p.Key]=new(){Enabled=true,Point=new(540,8),Comparison=RetBuffs.UsesColor(p.Key)?"expiring":"presence",ReferenceColor=c};
+            layout.SpecialPoints[p.Key]=new(){Enabled=true,Point=new(540,8),Comparison=RetBuffs.Comparison(p.Key),ReferenceColor=c};
             Check(RetBuffs.Observe(layout,p.Key,_=>Color.Black).Present==false,p.Key+"缺失");
             Check(RetBuffs.Observe(layout,p.Key,_=>c.ToColor()).Present==true,p.Key+"存在");
             if(RetBuffs.UsesColor(p.Key)) {
                 Check(RetBuffs.Observe(layout,p.Key,_=>c.ToColor()).Expiring==true,p.Key+"条件色");
                 Check(RetBuffs.Observe(layout,p.Key,_=>Color.Red).Expiring==false,p.Key+"非条件色");
             }
+        }
+        foreach(string key in new[]{"ret_free","ret_wings","ret_ruling"}) {
+            var setting=layout.SpecialPoints[key];setting.Comparison=key=="ret_ruling"?"presence":"expiring";
+            var legacy=RetBuffs.Observe(layout,key,_=>setting.ReferenceColor!.ToColor());
+            Check(legacy.Present==true&&RetBuffs.RadiantExpiry(legacy) is null,"旧点位存在状态保留，临期语义失效："+key);
+            setting.Comparison=RetBuffs.Comparison(key);
+            Check(RetBuffs.RadiantExpiry(RetBuffs.Observe(layout,key,_=>setting.ReferenceColor!.ToColor()))==true,"重新取色恢复GCD语义："+key);
         }
         var profiles=new ProfileLayouts(Path.Combine(Path.GetTempPath(),"hiji-ret-test-"+Guid.NewGuid().ToString("N")));
         var profile=ClassProfiles.Find(70)!;profiles.Save(profile,layout);
@@ -255,11 +348,24 @@ internal static class RetTests
         var moved=layout.Copy();moved.Frames[0]=new(moved.Frames[0].X+1,moved.Frames[0].Y);
         Check(profiles.Load(profile,moved).SpecialPoints.Values.All(p=>!p.Enabled),"几何变更禁用特殊点");
         using var settings=new RetPointSettings();settings.LoadSettings(layout);
+        settings.SetRadiant(true);
+        Check(settings.Rows["ret_wings"].Name.Text.Contains("454351"),"当前构筑配置显示灰烬增益ID");
+        settings.SetRadiant(false);
+        Check(settings.Rows["ret_wings"].Name.Text.Contains("31884"),"切换旧构筑更新配置ID");
+        settings.SetRadiant(true);
         settings.Stage("ret_art",new(new(550,8),new(60,70,80)));
         settings.Stage("ret_free",new(new(560,8),new(90,100,110)));
         var saved=settings.BuildLayout(layout,"ret_art");settings.LoadSettings(saved,"ret_art");
         Check(settings.Rows["ret_free"].Pending?.Color==new SampleColor(90,100,110),"独立行待保存颜色不会丢失");
         Check(saved.SpecialPoints["ret_art"].ReferenceColor==new SampleColor(60,70,80),"保存只用本行颜色");
+        settings.Stage("ret_ruling",new(new(570,8),new(120,130,140)));
+        var timedLayout=settings.BuildLayout(saved,"ret_ruling");
+        Check(timedLayout.SpecialPoints["ret_ruling"].Comparison=="ret-gcd","实际设置入口保存新GCD模式");
+        foreach(SampleColor? invalid in new SampleColor?[]{null,new(0,0,0)}) {
+            var invalidLayout=timedLayout.Copy();invalidLayout.SpecialPoints["ret_ruling"].ReferenceColor=invalid;
+            bool rejected=false;try {invalidLayout.Validate();} catch(InvalidDataException) {rejected=true;}
+            Check(rejected,"GCD模式拒绝缺失/黑色临期参考色");
+        }
         // Continuous trace records even without any presentation tick or input dispatch.
         var traceDirectory=Path.Combine(Path.GetTempPath(),"hiji-ret-log-"+Guid.NewGuid().ToString("N"));
         var traceStore=new SavedLogStore(traceDirectory);
@@ -292,7 +398,7 @@ internal static class RetTests
         foreach(var item in RetBuffs.Points)
         {
             var color=new SampleColor(144,92,18);
-            layout.SpecialPoints[item.Key]=new(){Enabled=true,Point=new(x,8),Comparison=RetBuffs.UsesColor(item.Key)?"expiring":"presence",ReferenceColor=color};
+            layout.SpecialPoints[item.Key]=new(){Enabled=true,Point=new(x,8),Comparison=RetBuffs.Comparison(item.Key),ReferenceColor=color};
             image.SetPixel(x,8,color.ToColor());x+=24;
         }
         var profiles=new ProfileLayouts(Path.Combine(Path.GetTempPath(),"hiji-ret-ui-"+Guid.NewGuid().ToString("N")));
@@ -304,10 +410,18 @@ internal static class RetTests
         foreach(var row in settings.Rows.Values)
             if(!row.Pick.Visible||row.Pick.Bottom>row.Pick.Parent!.ClientSize.Height||!row.Disable.Enabled)
                 throw new Exception("惩戒七行未完整显示");
+        settings.SetRadiant(true);Application.DoEvents();
+        if(settings.Rows["ret_sentence"].Pick.Visible||settings.Rows.Values.Count(r=>r.Pick.Visible)!=6||
+            !settings.Rows["ret_wings"].Name.Text.Contains("454351"))
+            throw new Exception("当前构筑六项光环及ID显示错误");
+        settings.SetRadiant(false);Application.DoEvents();
+        if(!settings.Rows["ret_sentence"].Pick.Visible||!settings.Rows["ret_wings"].Name.Text.Contains("31884"))
+            throw new Exception("旧构筑光环显示未恢复");
+        settings.SetRadiant(true);Application.DoEvents();
         foreach(var size in new[]{new Size(1180,800),new Size(950,650)})
         {
             form.ClientSize=size;form.Refresh();Application.DoEvents();
-            foreach(var row in settings.Rows.Values)
+            foreach(var row in settings.Rows.Values.Where(r=>r.Pick.Visible))
                 if(row.Save.Right>row.Save.Parent!.ClientSize.Width||row.Pick.Bottom>row.Pick.Parent!.ClientSize.Height)
                     throw new Exception("惩戒设置超出窗口");
         }
