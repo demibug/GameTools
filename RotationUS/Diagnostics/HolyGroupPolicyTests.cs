@@ -85,9 +85,9 @@ internal static class HolyGroupPolicyTests
             Check(Decide()==15,"critical self with three injured members opens Virtue before self rescue");
             Skill(9,false);Check(Decide()!=15,"unavailable Virtue continues direct rescue for mixed injuries");
             foreach(int injuries in new[]{1,2}) {
-                Reset(raid,injuries,.1);Skill(4,false);Skill(2,false);Skill(5);
-                Check(Decide()==11,"one or two critical members never trigger rescue Wings, even without instant heals");
-                Skill(7,false);Check(Decide()==11,"one or two critical members cannot trigger Mastery through single rescue pressure");
+                Reset(raid,injuries,.1);Skill(4,false);Skill(2,false);Skill(5);Skill(6);
+                Check(Decide()==12,"one or two critical members use Light rather than rescue Wings without instant heals");
+                Skill(7,false);Check(Decide()==12,"one or two critical members use Light rather than single rescue Mastery");
             }
 
             Reset(raid,raid?4:3,.55);
@@ -168,8 +168,8 @@ internal static class HolyGroupPolicyTests
         Check(Decide()==8,"three injured raid members do not trigger Wings");
         foreach(bool raid in new[]{false,true}) {
             Reset(raid,1,.1);Hp(6,.1);Member(1,.1);Member(2,1);F(46);F(47,false);
-            Skill(9,false);Skill(4,false);Skill(2,false);Skill(5);
-            Check(Decide()==1,"critical self without instant healing uses Flash instead of Wings");
+            Skill(9,false);Skill(4,false);Skill(2,false);Skill(5);Skill(6);
+            Check(Decide()==3,"critical self without instant healing uses Light instead of Wings");
         }
         HOLY.Inst.Reset();HOLY.Inst.Thresholds=new();HOLY.Inst.Buffs=new();
         return count;

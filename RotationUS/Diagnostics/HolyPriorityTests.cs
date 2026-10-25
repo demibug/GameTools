@@ -73,6 +73,36 @@ internal static class HolyPriorityTests
             Check(Spell(RaidTestFixture.Decide(f,buff).Key)==12,"major injury permits Hand while moving");
             Check(Spell(RaidTestFixture.Decide(f,buff,new(Major:.50)).Key)==12,"moving fallback also covers injury above configured Major");
         }
+        // Pixel-adjacent health boundaries, both recipient paths and group modes.
+        // Proc Flash remains available below75, including while moving.
+        foreach(bool raid in new[]{false,true})
+        foreach(bool self in new[]{false,true})
+        foreach(int hpByte in new[]{38,140,191,192,204,216,217,230})
+        foreach(bool? stationary in new bool?[]{false,true,null})
+        foreach(bool infusion in new[]{false,true}) {
+            var f=Frame(self,raid,hpByte/255.0);Skill(f,5);Skill(f,6);
+            f[10]=stationary is null?Color.Orange:stationary==true?Color.White:Color.Black;
+            var buff=new HolyBuffs{Infusion=infusion,HandOfDivinity=false,DivinePurpose=false};
+            int expected=hpByte>=217?0:infusion?11:stationary!=true?0:hpByte>=192?11:12;
+            Check(Spell(RaidTestFixture.Decide(f,buff).Key)==expected,
+                $"cast band raid={raid}, self={self}, pixel={hpByte}, stationary={stationary}, infusion={infusion}");
+        }
+        foreach(bool raid in new[]{false,true})
+        foreach(bool self in new[]{false,true})
+        foreach(double hp in new[]{.70,.80,.87}) {
+            var f=Frame(self,raid,hp);Skill(f,5);Skill(f,6);
+            var buff=new HolyBuffs{Infusion=false,HandOfDivinity=false};
+            var t=new HealingThresholds(HealBelow:.90);
+            Check(Spell(RaidTestFixture.Decide(f,buff,t).Key)==(hp==.80?11:12),"configured healing line never expands the fixed Flash band");
+            int slot=hp==.80?5:6;
+            foreach(int field in new[]{20+slot,30+slot}) {
+                foreach(var invalid in new[]{Color.Black,Color.Orange}) {
+                    f[field]=invalid;
+                    Check(RaidTestFixture.Decide(f,buff,t).Key==0,"unavailable selected hard cast cannot fall back to the wrong health-band spell");
+                }
+                f[field]=Color.White;
+            }
+        }
         // Group cooldowns must not be preempted solely by an early self macro.
         foreach(int cooldown in new[]{4,9}) {
             var keys=new List<int>();

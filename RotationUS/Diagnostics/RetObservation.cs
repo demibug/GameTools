@@ -81,7 +81,7 @@ internal sealed class RetBuffs
     }
     internal static Field[] Fields()
     {
-        string[] names={"玩家战斗中","玩家存活未骑乘","当前敌对存活目标","玩家未施法/引导","制裁之锤10码内战斗敌人≥2","玩家血量",
+        string[] names={"玩家战斗中","玩家存活未骑乘","当前敌对存活目标","未读条/引导（物品与责难可例外）","制裁之锤10码内战斗敌人≥2","玩家血量",
             "神圣能量≥3","神圣能量≥5","圣能来源有效","军官标记（翅膀＋处决）","食物标记（责难）","目标施法/引导","目标可打断（仅诊断）",
             "治疗石可用","治疗药水可用","GCD就绪","审判为愤怒之锤形态","翅膀自身冷却中","惩戒协议版本"};
         var result=Enumerable.Range(1,50).Select(i=>new Field(i.ToString(),i<=19?names[i-1]:"预留",i==6?ValueKind.Percent:i==19?ValueKind.Raw:ValueKind.FuryBoolean)).ToList();

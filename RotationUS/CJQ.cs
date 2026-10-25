@@ -32,8 +32,27 @@ internal sealed class CJQ
         string branch=F(5)==true?"多目标":F(5)==false?"单体":"目标数未知";
         RetDecision Result(int key,string reason)=>new(key,reason,branch,state);
         RetDecision Cancel(string reason) { state=new(RetStage.Clear);return Result(F(10)==true?28:0,reason); }
+        RetDecision? ItemRescue()
+        {
+            if(f.TryGetValue(6,out var hp)&&hp.R==hp.G&&hp.G==hp.B&&hp.R<=102) {
+                if(F(14)==true) return Result(22,"治疗石：血量≤40%");
+                if(F(15)==true) return Result(23,"治疗药水：血量≤40%");
+            }
+            return null;
+        }
         if(!f.TryGetValue(19,out var sig)||sig.ToArgb()!=RetBuffs.Signature.ToArgb()||F(50)!=true)
             return Cancel("等待惩戒v5有效协议，请 /reload") with {Key=0};
+        // Casting/unknown permits only the three explicitly allowed exceptions.
+        // Keep their normal combat, health, request, usability and range gates.
+        if(F(4)!=true) {
+            if((F(1)&F(2))==true) {
+                if(ItemRescue() is {} rescue) return rescue;
+                if((F(11)&F(3)&F(12)&F(38)&F(39)&F(48)&B(39))==true)
+                    return Result(21,"责难：食物标记请求（允许读条期间使用）");
+            }
+            return Result(0,F(4)==false?
+                "正在读条/引导，仅允许治疗石、药水和责难":"施法状态未知，仅允许治疗石、药水和责难");
+        }
         bool radiant=B(11)==true;
         bool radiantState=state.Stage is RetStage.RadiantPrepare or RetStage.RadiantReady;
         if(radiant&&!radiantState||!radiant&&radiantState) state=new();
@@ -48,10 +67,7 @@ internal sealed class CJQ
         int? epoch=RetBuffs.TargetEpoch(b);
         if(state.Stage!=RetStage.Idle&&(F(3)!=true||epoch is null||state.Epoch!=epoch))
             state=radiant?new():new(RetStage.Clear);
-        if(f.TryGetValue(6,out var hp)&&hp.R==hp.G&&hp.G==hp.B&&hp.R<=102) {
-            if(F(14)==true) return Result(22,"治疗石：血量≤40%");
-            if(F(15)==true) return Result(23,"治疗药水：血量≤40%");
-        }
+        if(ItemRescue() is {} itemRescue) return itemRescue;
         // Self-target macros: independent of enemy target and offensive buff points.
         // Protection is off the GCD; heals must wait for the GCD and never interrupt a cast.
         if((B(20)&B(25)&B(26)&B(42)&F(4))==true) return Result(3,"自身血量<60%：圣佑术（9）");

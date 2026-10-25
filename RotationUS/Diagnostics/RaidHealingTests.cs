@@ -86,7 +86,7 @@ internal static class RaidHealingTests
             F(92,false);F(13,false);Skill(2,false);buffs.Infusion=false;
             for(int i=0;i<20;i++) {Next(.5);HOLY.Inst.ObserveHealing(f,t,10+now,raidBars:b);}
             Check(ProductionTick()==12&&!HOLY.Inst.Raid.Sample.VirtueActive,"chain expired window retains low-priority moving Hand fallback");
-            F(10);Next();Check(ProductionTick()==11,"chain standing Flash remains available after window expiry");
+            F(10);Next();Check(ProductionTick()==12,"chain low-health standing Light remains available after window expiry");
         }
         foreach(bool virtueReady in new[]{false,true}) {
             Reset();Group(virtueReady?3:4,.75);Target(0);Skill(9,virtueReady);
@@ -107,7 +107,7 @@ internal static class RaidHealingTests
         Reset();Group(3,.75);Member(40,.75);Hp(6,.75);Target(40);b[40]=Color.FromArgb(128,255,255);Skill(9);
         Check(Decide().Key==15,"confirmed self identity supplies own range and counts as fourth member");
         Skill(9,false);Check(Decide().Key==8,"confirmed self identity permits self Shock despite unknown range API");
-        Reset();Member(1,1);foreach(int slot in new[]{31,32,33,40}) Member(slot,.75);Hp(6,.75);Target(1);Skill(9);
+        Reset();Member(1,1);foreach(int slot in new[]{31,32,33,40}) Member(slot,.80);Hp(6,.80);Target(1);Skill(9);
         Check(Decide().Key==0,"unselectable self Shock alone cannot promise a Virtue follow-up");
         Skill(5);Check(Decide().Key==15,"available self Flash provides executable Virtue follow-up outside first30");
         Reset();b[44]=Color.Red;Check(RaidRosterSnapshot.Read(b) is null,"torn epoch rejected");

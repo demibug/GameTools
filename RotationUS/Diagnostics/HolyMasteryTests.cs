@@ -93,7 +93,7 @@ internal static class HolyMasteryTests
             Check(Preview().Key==11,"infused Flash beats new fallback");
             buffs.Infusion=false;Skill(5,false);f[10]=Color.Orange;Observe(.4,true);
             Check(Preview().Key==0,"unknown movement does not enable new fallback");
-            F(10);Observe(.5,false);Check(Preview().Key==0,"stationary ordinary Hand retains old policy");
+            F(10);Observe(.5,false);Check(Preview().Key==12,"stationary below75 now falls back to Light");
             F(10,false);buffs.HandOfDivinity=null;Observe(.6,true);Check(Preview().Key==0,"unknown Hand cannot grant instant Light");
             buffs.HandOfDivinity=true;Skill(6,false);Observe(.7,false);Check(Preview().Key==0,"unusable Light cannot use proc");
             Skill(6);Skill(9);Group(.7);Observe(.8,true);Check(Preview().Key==15,"moving Hand authorizes useful Virtue followup");

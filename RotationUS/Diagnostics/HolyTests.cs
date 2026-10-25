@@ -90,7 +90,7 @@ internal static class HolyTests
             buff.Infusion=infusion;buff.HandOfDivinity=hand;
             Hp(8,hp);Member(2,hp);
             if(self) {Hp(6,hp);Member(1,hp);F(46);F(47,false);}
-            int expected=charges==2?8:infusion?(self?1:11):hand&&hp<.60?(self?3:12):charges==1?8:hp<.60?(self?3:12):self?1:11;
+            int expected=charges==2?8:infusion?(self?1:11):hand&&hp<.60?(self?3:12):charges==1?8:self?3:12;
             Want(expected,$"Shock priority raid={raid}, self={self}, charges={charges}, infusion={infusion}, hand={hand}");
         }
         Reset();Hp(6,.70);Member(1,.70);F(4,false);F(12);F(47,false);Skill(2);Skill(5);
@@ -103,14 +103,14 @@ internal static class HolyTests
         Reset(true);Hp(6,.70);Member(1,.70);Skill(2);Skill(5);Hp(8,1);Member(2,1);
         Want(201,"raid selects injured self for Shock instead of healing a full-health target");
         F(4,false);F(12);Want(201,"raid hostile target can select injured self for Shock");
-        Reset();Hp(6,.70);Member(1,.70);Skill(2);Skill(5);F(32,false);
+        Reset();Hp(8,.80);Member(2,.80);Hp(6,.80);Member(1,.80);Skill(2);Skill(5);F(32,false);
         Want(1,"unusable Shock cannot suppress self Flash");
         f[32]=Color.Orange;Want(1,"unknown Shock usability cannot suppress self Flash");
-        Reset();Hp(6,.70);Skill(2);Skill(5);Hp(8,1);Member(2,1);f[51]=Color.Orange;
+        Reset();Hp(6,.80);Skill(2);Skill(5);Hp(8,1);Member(2,1);f[51]=Color.Orange;
         Want(1,"unknown self roster health cannot suppress self Flash without a real Shock target or selector");
         foreach(int charges in new[]{1,2}) {
             foreach(int id in new[]{19,41,4,5,8}) {
-                Reset();Hp(6,.70);Member(1,.70);F(46);F(47,false);Skill(2);Skill(5);F(13,charges==2);
+                Reset();Hp(8,.80);Member(2,.80);Hp(6,.80);Member(1,.80);F(46);F(47,false);Skill(2);Skill(5);F(13,charges==2);
                 f[id]=Color.Orange;
                 Want(1,$"unconfirmed actual Shock route must retain self Flash, point={id}, charges={charges}");
                 if(charges==2) {
@@ -127,11 +127,11 @@ internal static class HolyTests
         foreach(var color in new[]{Color.Black,Color.Orange}) {
             F(32);f[13]=color;Want(11,"one or unknown second charge retains infused Flash before Shock");
         }
-        // Exercise the hard-cast conditions independently: ordinary injury,
-        // movement, missing mana and unknown procs/cooldowns retain Flash fallback.
+        // Hard casts use the recipient's health band; actual usability, rather
+        // than a mana percentage or unknown proc/cooldown, gates the chosen spell.
         foreach(bool self in new[]{false,true})
         foreach(bool raid in new[]{false,true})
-        foreach(double hp in new[]{.15,.55,.60,.84})
+        foreach(double hp in new[]{.15,.55,.60,.748,.752,.84})
         foreach(double? mana in new double?[]{.20,.40,null})
         foreach(bool stationary in new[]{false,true})
         foreach(bool? infusion in new bool?[]{false,true,null})
@@ -141,25 +141,24 @@ internal static class HolyTests
             if(mana is {} value) Hp(7,value);else f[7]=Color.Orange;
             if(self) {Hp(6,hp);Member(1,hp);Hp(8,1);Member(2,1);F(46);F(47,false);}
             else {Hp(8,hp);Member(2,hp);}
-            bool light=hp<.60&&infusion==false&&shock==false&&stationary&&mana>=.30;
-            int expected=light?(self?3:12):(infusion==true||stationary)?(self?1:11):0;
+            int expected=infusion==true?(self?1:11):!stationary?0:hp<.75?(self?3:12):(self?1:11);
             Want(expected,$"hard Light gates self={self}, raid={raid}, hp={hp}, mana={mana}, stationary={stationary}, infusion={infusion}, shock={shock}");
         }
         Reset(true);Hp(8,.55);Member(2,.55);Skill(6);Skill(5);Skill(2);
         Want(8,"ready and usable Shock precedes hard-cast Light");
         F(22,false);F(91);Skill(3);Want(9,"available holy power spender precedes target hard-cast Light");
         F(91,false);buff.DivinePurpose=true;Want(9,"free spender precedes target hard-cast Light");buff.DivinePurpose=false;
-        Hp(7,.29);Want(11,"mana just below30 uses Flash fallback");Hp(7,.31);Want(12,"mana just above30 permits hard Light");
+        Hp(7,.29);Want(12,"usable Light below30 mana remains the low-health cast");Hp(7,.31);Want(12,"usable Light above30 mana remains the low-health cast");
         foreach(int id in new[]{1,2,3,4,5,9,20}) {
             F(id,false);Want(id is 3 or 4?202:0,"hard Light never casts at invalid target; raid may select a valid ally");F(id);
         }
         foreach(int id in new[]{26,36}) {
             foreach(var color in new[]{Color.Black,Color.Orange}) {
-                f[id]=color;Want(11,"unlearned, cooldown, unusable or unknown Light falls through to Flash");
+                f[id]=color;Want(0,"unavailable or unknown Light never falls back to low-health hard Flash");
             }
             F(id);
         }
-        Hp(7,.4);Check(RaidTestFixture.Decide(f,buff,new(HolyLightMana:.50)).Key==11,"hard Light respects configured mana floor");
+        Hp(7,.4);Check(RaidTestFixture.Decide(f,buff,new(HolyLightMana:.50)).Key==12,"legacy mana floor no longer blocks usable low-health Light");
         F(30);F(40);Hp(6,.59);Want(5,"low health Protection uses existing minus action5");
         F(20,false);F(9,false);Want(5,"off-GCD Protection does not wait for GCD or current heal cast");
         Hp(6,.60);Want(0,"Protection excludes60 percent boundary");Hp(6,.61);Want(0,"Protection excludes health above60");Hp(6,.59);
@@ -203,7 +202,7 @@ internal static class HolyTests
         foreach(bool raid in new[]{false,true}) {
             Reset(raid);Skill(4);Skill(2);Want(8,"single injury never spends ready Toll");
             Hp(8,.15);Member(2,.15);Want(8,"single critical injury still does not spend group Toll");
-            Skill(2,false);Skill(5);Want(11,"single injury with Shock on cooldown falls through ready Toll to Flash");
+            Skill(2,false);Skill(5);Skill(6);Want(12,"critical single injury with no instant heal uses Light instead of group Toll");
             Hp(8,.80);Member(2,.80);Member(3,.80);Skill(2);Want(8,"ordinary two-person aoe below85 does not spend Toll");
             Hp(8,.60);Member(2,.60);Member(3,.60);Member(4,.60);
             Check(RaidTestFixture.Decide(f,buff,automatic,new(Healing:new(new PartyTollReading(true),TollConfirmed:true))).Key==(raid?8:4),
@@ -236,11 +235,11 @@ internal static class HolyTests
         foreach(bool self in new[]{false,true})
         foreach(bool? native in new bool?[]{false,true,null}) {
             Reset();Skill(5);Skill(6);Hp(8,.55);Member(2,.55);
-            buff.Infusion=null; // unknown infusion cannot authorize hard-cast Light
+            buff.Infusion=null;F(10,false); // isolate instant Hand from hard casts
             if(self) Hp(6,.55);
             buff.HandOfDivinity=true;
             f[94]=native is null?Color.Orange:native==true?Color.White:Color.Black;
-            Want(native==false?(self?1:11):(self?3:12),$"Hand source precedence, self={self}, native={native}");
+            Want(native==false?0:(self?3:12),$"Hand source precedence, self={self}, native={native}");
         }
         Reset();Skill(2);Want(8,"ordinary injury shock");
         F(100,false);F(94);Want(0,"old layer collector cannot masquerade as instant Holy Light");F(100);
@@ -265,7 +264,7 @@ internal static class HolyTests
         buff.Infusion=buff.HandOfDivinity=null;
         Skill(2);Want(8,"unlearned group spells and flash skip unknown dependent auras");
         Skill(2,false);Skill(3);F(91);Want(9,"unlearned shock falls through to holy power spender");
-        Skill(3,false);Skill(6);Hp(8,.55);Want(0,"unknown infusion cannot authorize hard-cast Holy Light");Skill(5);Want(11,"unlearned spender falls through to Flash");
+        Skill(3,false);Skill(6);Hp(8,.55);Want(12,"unknown infusion does not block stationary low-health Light");Skill(5);Want(12,"available Flash does not replace low-health Light");
         Reset();Hp(6,.19);Want(0,"manual Lay never casts automatically");
         F(18);Want(0,"legacy Forbearance present cannot change manual Lay behavior");
         F(18,false);Want(0,"legacy Forbearance absent cannot enable automatic Lay");
@@ -280,10 +279,10 @@ internal static class HolyTests
         buff.HandOfDivinity=null;Want(0,"unknown Hand never enables moving self Holy Light");
         F(10);Hp(6,.55);Hp(7,.4);Want(3,"stationary major self injury with no infusion and Shock cooldown uses hard-cast Light");
         Skill(5);Want(3,"eligible hard-cast self Light precedes ordinary Flash fallback");
-        Hp(7,.2);Want(1,"self Flash uses skill usability rather than former Holy Light mana floor");F(35,false);Want(0,"self Flash still requires enough actual resources");F(35);
+        Hp(7,.2);Want(3,"self Light uses actual usability instead of a mana percentage floor");F(36,false);Want(0,"unusable self Light cannot fall back to low-health hard Flash");F(36);
         F(10,false);Want(0,"ordinary self Flash requires stationary");F(10);
         Hp(6,.84);Want(1,"self stationary Flash now covers ordinary injury below85");Hp(6,.55);
-        Skill(5,false);Want(0,"unlearned self Flash and insufficient mana for hard Light wait");Skill(5);F(9,false);Want(0,"self Flash waits for active cast");F(9);F(20,false);Want(0,"self Flash waits for gcd");
+        Skill(5,false);Want(3,"unlearned Flash does not block usable low-health Light");Skill(5);F(9,false);Want(0,"self hard cast waits for active cast");F(9);F(20,false);Want(0,"self hard cast waits for gcd");
         Reset();F(11);F(4,false);F(12);F(13);F(14);F(15);F(20,false);Want(0,"Holy never interrupts or cancels food even with legacy ready observations");
         F(20);Want(0,"legacy food and cast observations cannot request an interrupt outside GCD either");
         Reset();Skill(2);
@@ -369,13 +368,13 @@ internal static class HolyTests
         buff.DivinePurpose=true;F(3,false);Want(2,"self free heal does not require live target");
         Reset(true);Skill(3);buff.DivinePurpose=true;Member(3,.2);Want(203,"raid proc selects lower injured member");
         Reset();Member(5,.2);Skill(3);buff.DivinePurpose=true;Want(105,"external point105 does not collide with party4 selection action105");
-        Reset();Hp(8,.55);Member(2,.55);Skill(6);Skill(5);Want(12,"major target gets hard Light with absent infusion and Shock cooldown");Hp(7,.2);Want(11,"low mana uses Flash when usable");
+        Reset();Hp(8,.55);Member(2,.55);Skill(6);Skill(5);Want(12,"major target gets hard Light with absent infusion and Shock cooldown");Hp(7,.2);Want(12,"low mana percentage still permits actually usable Light");
         foreach(bool? present in new bool?[]{true,false,null}) {
-            buff.HandOfDivinity=present;Want(present==true?12:11,"only confirmed Hand bypasses hard Light mana floor");
+            buff.HandOfDivinity=present;Want(12,"stationary low-health Light does not require Hand");
         }
         F(10,false);Want(0,"moving uninfused no cast time spells");
         Reset();buff.Infusion=true;Skill(5);F(10,false);Want(11,"moving infused flash allowed");
-        Reset();Skill(2);F(22,false);Skill(5);Want(11,"stationary injured ally gets uninfused Flash when Shock has no charges");
+        Reset();Hp(8,.80);Member(2,.80);Skill(2);F(22,false);Skill(5);Want(11,"stationary 80 percent ally gets uninfused Flash when Shock has no charges");
         foreach(var color in new[]{Color.White,Color.Black,Color.Orange}) {
             f[97]=color;Want(11,"removed window state cannot block Flash fallback during Shock cooldown");
         }
@@ -385,12 +384,12 @@ internal static class HolyTests
         F(35);F(10,false);Want(0,"moving without confirmed Infusion waits instead of ordinary Flash");
         Check(RaidTestFixture.Decide(f,buff).Reason.Contains("点10"),"blocked Flash identifies movement point");
         foreach(int n in new[]{1,2,3,4,6,7,8,9}) {
-            Reset();Skill(5);F(20+n);F(30+n);f[20+n]=Color.Orange;
+            Reset();Hp(8,.80);Member(2,.80);Skill(5);F(20+n);F(30+n);f[20+n]=Color.Orange;
             Want(11,"unknown cooldown for skill"+n+" cannot block ordinary Flash fallback");
             F(20+n);f[30+n]=Color.Orange;
             Want(11,"unknown usability for skill"+n+" cannot block ordinary Flash fallback");
         }
-        Reset(true);Skill(5);Skill(2);F(22,false);Want(11,"raid selected injured target receives ordinary Flash with Shock on cooldown");
+        Reset(true);Hp(8,.80);Member(2,.80);Skill(5);Skill(2);F(22,false);Want(11,"raid selected 80 percent target receives ordinary Flash with Shock on cooldown");
         F(9,false);Want(0,"fallback never interrupts current cast");F(9);F(20,false);Want(0,"fallback waits for actual GCD");
         f[20]=Color.Orange;Want(0,"unknown GCD cannot enable fallback cast");
         Reset();Hp(8,.55);Member(2,.55);Skill(6);Skill(2);F(10,false);Hp(7,.05);buff.HandOfDivinity=true;

@@ -59,19 +59,24 @@ internal static class RaidHolyPolicy
         bool capped=F(92)==true,canSpend=F(91)==true||capped||buff.DivinePurpose==true;
         HolyDecision? OrdinaryMastery()=>!emergency&&mastery&&F(19)==true&&F(91)==false&&F(92)==false&&buff.DivinePurpose!=true?
             new(14,HolyMasteryPolicy.Reason(masterySample,f,t,true)):null;
-        bool hardLight=infusion==false&&F(22)==false&&F(10)==true&&P(7)>=t.HolyLightMana&&Skill(6);
+        bool HardFlash(double? hp)=>hp>=.75&&hp<.85;
+        bool CanHardCast(double? hp)=>hp is >0&&hp<t.HealBelow&&F(10)==true&&Skill(HardFlash(hp)?5:6);
         bool HandFor(double? hp)=>hp is >0&&hp<t.HealBelow&&hand==true&&Skill(6)&&(hp<t.Major||buff.HandExpiring==true||window);
         bool MovingHand(double? hp)=>hp is >0&&hp<t.HealBelow&&F(10)==false&&hand==true&&Skill(6);
-        bool instant=(canSpend&&Skill(3))||Skill(2)||(infusion==true&&Skill(5));
-        bool CanFollow(double? hp)=>hp is >0&&hp<t.HealBelow&&(instant||HandFor(hp)||MovingHand(hp)||(F(10)==true&&(Skill(5)||(hp<t.Major&&hardLight))));
+        bool instant=(canSpend&&Skill(3))||(infusion==true&&Skill(5));
+        bool CanFollow(double? hp,bool shockRoute=true)=>hp is >0&&hp<t.HealBelow&&
+            (instant||(shockRoute&&Skill(2))||HandFor(hp)||MovingHand(hp)||CanHardCast(hp));
         bool urgentRecipient=selfCritical||critical||(best>0&&bestHp<t.Critical);
         bool reselect=pendingSelection>0&&best>0&&best!=pendingSelection&&roster!.Target(best);
-        // Self macros work anywhere in the roster. Shock needs either an
-        // already confirmed target or one of the thirty selectable slots.
-        // Do not open an empty Virtue solely for unselectable self Shock.
-        bool selfFollow=selfNeed&&((canSpend&&Skill(3))||(infusion==true&&Skill(5))||HandFor(P(6))||MovingHand(P(6))||
-            (F(10)==true&&(Skill(5)||(P(6)<t.Major&&hardLight))));
-        bool followup=selfFollow||(healing&&CanFollow(P(8)))||(best>0&&CanFollow(bestHp));
+        // Match normal triage, including self macros outside the first30.
+        // A heal for another health band cannot promise this recipient's heal.
+        // Tied critical self/target health may retain the current ally for the
+        // direct-rescue Shock before ordinary self targeting runs.
+        bool currentRescueShock=critical&&!reselect&&(best==0||bestHp>=t.Critical||roster!.Target(best));
+        bool selfShockRoute=(healing&&targetSelf)||(best==selfSlot&&selfSlot is >=1 and <=30)||currentRescueShock;
+        bool followup=selfPriority?CanFollow(P(6),selfShockRoute):
+            best>0&&!roster!.Target(best)?CanFollow(bestHp):
+            healing&&CanFollow(P(8));
         HolyDecision? Virtue(bool allowSelection)
         {
             if(!group.Aoe||window||!followup||!Skill(9)||!context.Allows(15)) return null;
@@ -148,8 +153,9 @@ internal static class RaidHolyPolicy
         if(Shock() is {} shock) return shock;
         if(needsHeal&&F(91)==true&&Skill(3)) return new(gloryKey,"消耗3圣能荣耀圣令");
         if(needsHeal&&MovingHand(healHp)) return new(lightKey,"移动中无其他可执行瞬发：神性之手圣光术兜底");
-        if(needsHeal&&healHp<t.Major&&hardLight) return new(lightKey,"大掉血、无灌注、震击冷却、静止且法力足够：圣光术");
-        if(needsHeal&&F(10)==true&&Skill(5)) return new(flashKey,"治疗兜底圣光闪现");
+        if(needsHeal&&CanHardCast(healHp)) return HardFlash(healHp)?
+            new(flashKey,"血量75%～<85%：站定读条圣光闪现"):
+            new(lightKey,"闪现读条血量区间外：站定圣光术兜底");
         if(!needsHeal&&!capped&&F(12)==true&&F(99)==true&&Skill(1)) return new(7,"距离内敌对目标审判");
         return new(0,needsHeal?"等待可用治疗技能／站定读条":"轻微掉血，无需主动治疗");
     }

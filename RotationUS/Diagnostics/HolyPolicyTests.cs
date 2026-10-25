@@ -121,8 +121,8 @@ internal static class HolyPolicyTests
             frames[24]=tollReady is null?Color.Orange:tollReady==true?Color.White:Color.Black;
             F(34,false);Want(13,"needed Wings independent of Infusion and Toll cooldown");
         }
-        Reset();Hp(8,.1);Member(2,.1);Skill(7);Skill(5);
-        Want(11,"critical ally with no instant heal uses Flash instead of single-target Wings");
+        Reset();Hp(8,.1);Member(2,.1);Skill(7);Skill(5);Skill(6);
+        Want(12,"critical ally with no instant heal uses Light instead of single-target Wings");
         Skill(2);Want(8,"available instant heal saves critical ally before Wings");
         Reset();Group();Skill(7);Skill(2);settings=settings with{AutoWings=false};Want(8,"manual Wings reserve");
         Reset(true);Group();for(int i=5;i<=12;i++) Member(i,.4);Skill(7);Skill(2);
@@ -158,16 +158,57 @@ internal static class HolyPolicyTests
         settings=settings with{RaidAutoAuraMastery=true};Want(14,"raid enable restores emergency Mastery without a talent flag");
         Want(14,"removed global switch cannot block emergency Mastery");
 
-        Reset();Group(.75);Skill(9);Skill(5);F(10,false);Want(0,"moving without instant follow-up never opens empty Virtue");
+        Reset();Group(.80);Skill(9);Skill(5);F(10,false);Want(0,"moving without instant follow-up never opens empty Virtue");
         F(10);Want(15,"standing executable Flash supports Virtue without fixed combination");
         F(35,false);Want(0,"unusable follow-up cannot open Virtue");
         Skill(2);Want(15,"available Shock supports Virtue");
         F(92);Want(15,"capped available heal remains a valid Virtue follow-up");
         Skill(3);F(91);Want(15,"capped spender is a valid Virtue follow-up");
-        Reset();Group(.75);Skill(9);Skill(6);buff.Infusion=false;
-        Want(0,"ordinary Holy Light above Major threshold is not executable Virtue follow-up");
-        Hp(8,.55);Member(2,.55);Want(15,"below Major threshold permits executable hard Light after Virtue");
-        Hp(7,.2);Want(0,"low mana invalidates hard Light-only Virtue follow-up");
+        Reset();Group(.80);Skill(9);Skill(6);buff.Infusion=false;
+        Want(0,"Light-only follow-up cannot replace Flash inside the Flash health band");
+        Hp(8,.70);Member(2,.70);Want(15,"below75 permits executable hard Light after Virtue");
+        Hp(7,.2);Want(15,"actual usable Light supports Virtue below old mana floor");
+        F(36,false);Want(0,"unusable Light invalidates the only Virtue follow-up");
+
+        // A heal available for a different health band must not promise a
+        // Virtue follow-up that the actual recipient selection cannot execute.
+        foreach(bool raid in new[]{false,true})
+        foreach(bool self in new[]{false,true})
+        foreach(int field in new[]{26,36})
+        foreach(var unavailable in new[]{Color.Black,Color.Orange}) {
+            Reset(raid);Group(.80);Hp(6,self?.70:.80);Member(1,self?.70:.80);
+            Hp(8,self?.80:.70);Member(2,self?.80:.70);
+            Skill(9);Skill(5);Skill(6);frames[field]=unavailable;
+            Want(0,"Virtue cannot borrow another recipient's Flash when the priority recipient needs unavailable Light");
+            Check(Tick(0)==0&&Tick(.1)==0,"repeated production samples do not open empty Virtue across health bands");
+            F(field);Want(15,"confirmed Light restores Virtue for the actual priority recipient");
+            Check(Tick(.2)==15,"production opens Virtue once its real follow-up becomes executable");
+            F(29,false);
+            Check(Tick(.3)==(self?3:12),"next production decision delivers Light to the priority recipient");
+        }
+        foreach(bool raid in new[]{false,true}) {
+            Reset(raid);Group(.80);Hp(6,.80);Member(1,.80);Member(3,.70);Skill(9);Skill(5);
+            int select=raid?203:103;
+            Want(select,"healthy-band current target cannot promise Virtue when triage will select a lower-band ally");
+            Check(Tick(0)==select,"production selects the lower-band ally without spending Virtue first");
+            F(47,false);F(48);Hp(8,.70);
+            Check(Tick(.1)==0&&Tick(.2)==0,"target confirmation cannot unlock an unusable follow-up");
+            Skill(6);Check(Tick(.3)==15,"available Light opens Virtue after target confirmation");
+            F(29,false);Check(Tick(.4)==12,"confirmed newly selected ally receives the promised Light");
+
+            Reset(raid);Group(.84);Hp(6,.80);Member(1,.80);Skill(9);Skill(5);
+            Check(Tick(0)==15,"self-priority Flash inside its band still permits useful Virtue");
+            F(29,false);Check(Tick(.1)==1,"self-priority follow-up remains the self Flash macro");
+        }
+        foreach(bool raid in new[]{false,true})
+        foreach(bool self in new[]{false,true})
+        foreach(double hp in new[]{.10,.70}) {
+            Reset(raid);Group(.80);Hp(6,self?hp:.80);Member(1,self?hp:.80);
+            Hp(8,self?.80:hp);Member(2,self?.80:hp);Skill(9);Skill(5);
+            buff.Infusion=true;F(10,false);
+            Check(Tick(0)==15,"moving infused Flash still supports Virtue below the hard-Flash band, including critical health");
+            F(29,false);Check(Tick(.1)==(self?1:11),"moving infused Flash follows Virtue with the original recipient and action");
+        }
 
         // The requested Virtue-first party examples, through real Process as
         // well as the pure decision. Target confirmation remains mandatory.
@@ -232,8 +273,8 @@ internal static class HolyPolicyTests
             Check(Tick(0)==expected,"actual execution retains capped instant healing with unavailable spender");
             Skill(3);Want(self?2:9,"available capped spender still precedes generators");
         }
-        Reset();F(91);F(92);Skill(5);buff.Infusion=null;buff.HandOfDivinity=null;
-        Want(11,"capped injured target retains stationary Flash fallback");
+        Reset();F(91);F(92);Skill(5);Skill(6);buff.Infusion=null;buff.HandOfDivinity=null;
+        Want(12,"capped low-health target retains stationary Light fallback");
         F(10,false);Want(0,"cap never assumes unknown procs are instant while moving");
         F(10);Skill(2);Want(8,"standing ready Shock precedes hard-cast fallback at cap");
         Hp(8,1);Member(2,1);F(4,false);F(12);frames[95]=Color.Orange;

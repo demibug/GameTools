@@ -196,7 +196,8 @@ internal sealed class HOLY
             selfPriority=(best<=1||PartyHealingPriority.Compare(P(6)!.Value,1,bestHp,best,t,party,power)<=0)&&
                 (!need||PartyHealingPriority.Compare(P(6)!.Value,1,P(8)!.Value,targetSlot,t,party,power)<=0);
         }
-        bool hardLight=infusion==false&&F(22)==false&&F(10)==true&&P(7)>=t.HolyLightMana&&Skill(6);
+        bool HardFlash(double? hp)=>hp>=.75&&hp<.85;
+        bool CanHardCast(double? hp)=>hp is >0&&hp<t.HealBelow&&F(10)==true&&Skill(HardFlash(hp)?5:6);
         bool capped=F(92)==true;
         bool canSpend=F(91)==true||capped||buff.DivinePurpose==true;
         HolyDecision? OrdinaryMastery()=>!emergency&&mastery&&F(19)==true&&F(41)==false&&
@@ -208,15 +209,18 @@ internal sealed class HOLY
         bool HandFor(double? hp)=>hp is >0&&hp<t.HealBelow&&hand==true&&Skill(6)&&
             (hp<t.Major||buff.HandExpiring==true||virtueWindow);
         bool MovingHand(double? hp)=>hp is >0&&hp<t.HealBelow&&F(10)==false&&hand==true&&Skill(6);
-        bool instant=(canSpend&&Skill(3))||Skill(2)||(infusion==true&&Skill(5));
-        bool CanFollow(double? hp)=>hp is >0&&hp<t.HealBelow&&
-            (instant||HandFor(hp)||MovingHand(hp)||(F(10)==true&&(Skill(5)||(hp<t.Major&&hardLight))));
+        bool instant=(canSpend&&Skill(3))||(infusion==true&&Skill(5));
+        bool CanFollow(double? hp,bool shockRoute=true)=>hp is >0&&hp<t.HealBelow&&
+            (instant||(shockRoute&&Skill(2))||HandFor(hp)||MovingHand(hp)||CanHardCast(hp));
         bool urgentRecipient=selfCritical||critical||(!raid&&best>0&&bestHp<t.Critical);
         bool reselectCurrent=!raid&&pendingSelection>0&&best>0&&best!=pendingSelection&&F(45+best)==true;
-        // Virtue's recipient and the following direct-heal recipient may differ.
-        // Three critical members also authorize setup in a large raid, matching
-        // the existing emergency population exception for Toll/Mastery.
-        bool virtueFollowup=CanFollow(P(6))||(healing&&CanFollow(P(8)))||(!raid&&best>0&&CanFollow(bestHp));
+        // Virtue may land on a different unit, but its follow-up must be usable
+        // on the recipient normal triage will actually heal/select next.
+        bool selfShockRoute=F(41) is not null&&F(19) is not null&&
+            ((healing&&F(46)==true&&P(8)<t.HealBelow)||(!raid&&best==1));
+        bool virtueFollowup=selfPriority?CanFollow(P(6),selfShockRoute):
+            !raid&&best>0&&F(45+best)!=true?CanFollow(bestHp):
+            healing&&CanFollow(P(8));
         HolyDecision? VirtueSetup(bool allowSelection)
         {
             if(!(aoe||emergency)||virtueWindow||!virtueFollowup||!Skill(9)||!context.Allows(15)) return null;
@@ -326,17 +330,20 @@ internal sealed class HOLY
         if(Shock() is { } shock) return shock;
         if(needsHeal&&F(91)==true&&Skill(3)) return new(glory,"消耗3圣能荣耀圣令");
         if(needsHeal&&MovingHand(healHp)) return new(light,"移动中无其他可执行瞬发：神性之手圣光术兜底");
-        if(needsHeal&&healHp<t.Major&&hardLight) return new(light,"大掉血、无灌注、震击冷却、静止且法力足够：读条圣光术");
-        if(needsHeal&&F(10)==true&&Skill(5)) return new(flash,"治疗兜底圣光闪现");
+        if(needsHeal&&CanHardCast(healHp)) return HardFlash(healHp)?
+            new(flash,"血量75%～<85%：站定读条圣光闪现"):
+            new(light,"闪现读条血量区间外：站定圣光术兜底");
         if(!needsHeal&&!capped&&F(12)==true&&F(99)==true&&Skill(1)) return new(7,"距离内敌对目标审判");
         if(capped&&!needsHeal) return new(0,F(12)==true&&F(95) is null?
             "5圣能：盾击近战距离未知（点95），等待有效治疗消耗目标":
             "5圣能：等待有效消耗目标，避免继续伤害产能");
         if(needsHeal) {
-            if(F(10) is null) return new(0,"玩家静止状态未知（点10），普通闪现暂不读条");
-            if(F(10)!=true) return new(0,"无可用瞬发治疗；普通闪现需要静止（点10）");
-            if(F(25)!=true) return new(0,"等待圣光闪现就绪／已学状态（点25）");
-            if(F(35)!=true) return new(0,"等待圣光闪现可用状态／法力（点35）");
+            if(F(10) is null) return new(0,"玩家静止状态未知（点10），普通治疗暂不读条");
+            if(F(10)!=true) return new(0,"无可用瞬发治疗；普通读条治疗需要静止（点10）");
+            int castSlot=HardFlash(healHp)?5:6;
+            string castName=HardFlash(healHp)?"圣光闪现":"圣光术";
+            if(F(20+castSlot)!=true) return new(0,$"等待{castName}就绪／已学状态（点{20+castSlot}）");
+            if(F(30+castSlot)!=true) return new(0,$"等待{castName}可用状态／法力（点{30+castSlot}）");
         }
         return new(0,needsHeal?(infusion is null?"灌注状态未知，等待其他可用治疗技能":"等待可用治疗技能"):"轻微掉血，无需主动治疗");
     }
