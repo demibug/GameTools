@@ -57,10 +57,17 @@ internal static class RaidHolyPolicy
         bool selfPriority=selfNeed&&P(6)<=otherHp;
         bool critical=need&&P(8)<t.Critical;
         bool capped=F(92)==true,canSpend=F(91)==true||capped||buff.DivinePurpose==true;
-        HolyDecision? OrdinaryMastery()=>!emergency&&mastery&&F(19)==true&&F(91)==false&&F(92)==false&&buff.DivinePurpose!=true?
+        bool masterySpender=canSpend&&Skill(3)&&(selfPriority||
+            (need&&targetConfirmed&&(best==0||roster!.Target(best))));
+        HolyDecision? OrdinaryMastery()=>!emergency&&mastery&&F(19)==true&&!masterySpender?
             new(14,HolyMasteryPolicy.Reason(masterySample,f,t,true)):null;
         bool HardFlash(double? hp)=>hp>=.75&&hp<.85;
-        bool CanHardCast(double? hp)=>hp is >0&&hp<t.HealBelow&&F(10)==true&&Skill(HardFlash(hp)?5:6);
+        int HardCast(double? hp) {
+            if(hp is not >0||hp>=t.HealBelow||F(10)!=true) return 0;
+            int preferred=HardFlash(hp)?5:6,other=preferred==5?6:5;
+            return Skill(preferred)?preferred:Skill(other)?other:0;
+        }
+        bool CanHardCast(double? hp)=>HardCast(hp)!=0;
         bool HandFor(double? hp)=>hp is >0&&hp<t.HealBelow&&hand==true&&Skill(6)&&(hp<t.Major||buff.HandExpiring==true||window);
         bool MovingHand(double? hp)=>hp is >0&&hp<t.HealBelow&&F(10)==false&&hand==true&&Skill(6);
         bool instant=(canSpend&&Skill(3))||(infusion==true&&Skill(5));
@@ -145,7 +152,7 @@ internal static class RaidHolyPolicy
         if(healing&&worsening&&wings) return new(13,"团队至少4人低于70%且持续恶化：优先翅膀");
         if(toll&&F(91)==false&&F(92)==false) return new(10,group.Immediate?"团队至少4人大掉血：鸣钟（;）":"团队至少4人缺血、总缺血≥40个百分点且连续两次确认：鸣钟（;）");
         if(healing&&group.Reliable&&(group.WingsSevere>=4||worsening)&&wings) return new(13,"团队至少4人严重掉血：复仇之怒");
-        if(mastery&&!emergency&&spender) return new(gloryKey,"光环掌握附带鸣钟前先消耗圣能");
+        if(mastery&&!emergency&&masterySpender) return new(gloryKey,"光环掌握附带鸣钟前先消耗可用荣耀圣令，再检查伤情");
         if(OrdinaryMastery() is {} normalMastery) return normalMastery;
         if(Shock(true) is {} fullShock) return fullShock;
         if(needsHeal&&infusion==true&&Skill(5)) return new(flashKey,"灌注Buff：圣光闪现");
@@ -153,9 +160,9 @@ internal static class RaidHolyPolicy
         if(Shock() is {} shock) return shock;
         if(needsHeal&&F(91)==true&&Skill(3)) return new(gloryKey,"消耗3圣能荣耀圣令");
         if(needsHeal&&MovingHand(healHp)) return new(lightKey,"移动中无其他可执行瞬发：神性之手圣光术兜底");
-        if(needsHeal&&CanHardCast(healHp)) return HardFlash(healHp)?
-            new(flashKey,"血量75%～<85%：站定读条圣光闪现"):
-            new(lightKey,"闪现读条血量区间外：站定圣光术兜底");
+        if(needsHeal&&HardCast(healHp) is var cast&&cast!=0) return cast==5?
+            new(flashKey,HardFlash(healHp)?"血量75%～<85%：优先站定读条圣光闪现":"圣光术不可用：站定圣光闪现兜底"):
+            new(lightKey,HardFlash(healHp)?"圣光闪现不可用：站定圣光术兜底":"闪现优先区间外：优先站定圣光术");
         if(!needsHeal&&!capped&&F(12)==true&&F(99)==true&&Skill(1)) return new(7,"距离内敌对目标审判");
         return new(0,needsHeal?"等待可用治疗技能／站定读条":"轻微掉血，无需主动治疗");
     }

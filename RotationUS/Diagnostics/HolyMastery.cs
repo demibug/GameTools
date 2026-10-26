@@ -15,10 +15,13 @@ internal sealed record HolyMasterySample(bool Reliable=false,int Minimum=3,int M
     {
         bool raid=f.TryGetValue(41,out var c)&&FuryBuffs.Boolean(c)==true;
         var group=HolyTriage.Analyze(f,raid,t);
-        int major=0;
+        int major=0,severe=0;
         for(int slot=1;slot<=(raid?40:5);slot++)
-            if(f.TryGetValue(50+slot,out var color)&&TeamHealthReading.Read(color).Percent is >0 and var hp&&hp<t.Major) major++;
-        return new(group.Reliable&&(raid||group.Unknown==0),raid?4:3,major,group.Critical,group.Urgent);
+            if(f.TryGetValue(50+slot,out var color)&&TeamHealthReading.Read(color).Percent is >0 and var hp) {
+                if(hp<t.Major) major++;
+                if(hp<t.AuraMasteryBelow) severe++;
+            }
+        return new(group.Reliable&&(raid||group.Unknown==0),raid?4:3,major,severe,group.Urgent);
     }
 }
 
@@ -88,9 +91,9 @@ internal static class HolyMasteryPolicy
         if(!s.Reliable) return "有效伤情不足／血量或距离未知";
         if(s.Emergency) return "群体危急，允许圣能溢出";
         if(s.Deteriorating) return "已确认低血伤员持续恶化";
-        if(!s.SevereNow) return $"光环伤情人数不足（需要{s.Minimum}人）";
+        if(!s.SevereNow) return $"光环伤情人数不足（需要{s.Minimum}人低于{t.AuraMasteryBelow:P0}）";
         if(!s.SevereConfirmed) return "严重群伤等待第二次独立采样";
-        if(TollUnavailable(f)) return "严重群伤已确认，鸣钟明确不可用";
+        if(TollUnavailable(f)) return $"至少{s.Minimum}人低于{t.AuraMasteryBelow:P0}已确认，鸣钟明确不可用";
         bool? Flag(int id)=>f.TryGetValue(id,out var c)?FuryBuffs.Boolean(c):null;
         return Flag(24)==true&&Flag(34)==true?"鸣钟可用，优先鸣钟":"鸣钟状态未知";
     }
@@ -111,7 +114,8 @@ internal sealed class HolyMasteryDiagnosticLog
             F(9)!=true||F(20)!=true?"等待施法结束／GCD":
             F(28)!=true||F(38)!=true?"光环掌握未就绪／不可用／未知":
             !context.Allows(14)?"光环掌握请求限频":
-            !sample.Emergency&&(F(91)!=false||F(92)!=false)?"非紧急：先处理圣能／圣能未知":
+            !sample.Emergency&&(F(91)==true||F(92)==true)&&F(23)==true&&F(33)==true?
+                "非紧急：有可用荣耀及治疗对象时先消耗；不可执行则继续光环":
             "仍需按可执行技能优先级判断";
         string state=reason+";"+gate+";"+executing;
         var changes=new List<PartyLogChange>();

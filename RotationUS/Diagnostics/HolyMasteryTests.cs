@@ -59,7 +59,7 @@ internal static class HolyMasteryTests
             Check(Preview().Key==14,"critical needs no historical confirmation and allows overflow");
             Group(.1,mode?3:2);Observe(.1,false);Check(Preview().Key!=14,"fixed mode-specific minimum");
             Reset(mode,.55);Skill(8);Skill(2);Observe(0);Observe(.3,false);
-            Check(Preview().Key==8,"stable Major alone does not release Mastery");
+            Check(Preview().Key==14,"stable injury below65 releases Mastery when Toll is unavailable");
 
             Reset(mode);Skill(8);Skill(2);Observe(0);Observe(.3,false);
             Skill(4);Observe(.4,false);Check(Preview().Key==(mode?10:4),"ready Toll precedes ordinary Mastery");
@@ -67,8 +67,8 @@ internal static class HolyMasteryTests
             Check(Preview().Key==8,"unknown Toll does not authorize severe upgrade");
             f[24]=Color.Black;Observe(.6,true);Check(Preview().Key==14,"confirmed unavailable Toll authorizes severe upgrade");
             F(91);Skill(3);Observe(.7,false);Check(Preview().Key==9,"usable spender before ordinary Mastery");
-            Skill(3,false);Observe(.8,false);Check(Preview().Key==8,"unusable spender does not authorize nonurgent overflow");
-            F(91,false);f[92]=Color.Orange;Observe(.9,true);Check(Preview().Key==8,"unknown power blocks nonurgent burst");
+            Skill(3,false);Observe(.8,false);Check(Preview().Key==14,"unusable spender cannot block nonurgent Mastery");
+            F(91,false);f[92]=Color.Orange;Observe(.9,true);Check(Preview().Key==14,"unknown power does not block qualified Mastery");
             F(92,false);Target(0);Observe(1,false);Check(Preview().Key==14,"ordinary Mastery needs no friendly target");
 
             Reset(mode,.7);Skill(2);Target(1);Observe(0);Check(Act()==(mode?202:102),"begin selection");
@@ -99,6 +99,43 @@ internal static class HolyMasteryTests
             Skill(6);Skill(9);Group(.7);Observe(.8,true);Check(Preview().Key==15,"moving Hand authorizes useful Virtue followup");
         }
 
+        // The 65% Mastery line is independent of the old 50% group parameter.
+        // Use production observations in both modes, including the pixel boundary.
+        foreach(bool mode in new[]{false,true}) {
+            foreach(int pixel in new[]{140,165,166}) {
+                Reset(mode,pixel/255.0);Skill(8);F(34);t=t with{GroupCritical=.40};HOLY.Inst.Thresholds=t;
+                Observe(0);Check(Preview().Key!=14,"ordinary Mastery retains independent sample confirmation");
+                Observe(.3,false);
+                Check((Preview().Key==14)==(pixel<166),"default65 boundary and old GroupCritical independence");
+                Group(pixel/255.0,mode?3:2);Observe(.4,true);
+                Check(Preview().Key!=14,"65 line retains party3 / raid4 minimum");
+            }
+            foreach(int powerState in new[]{0,3,5,-1})
+            foreach(bool free in new[]{false,true})
+            foreach(int field in new[]{23,33})
+            foreach(var unavailable in new[]{Color.Black,Color.Orange}) {
+                Reset(mode,.64);Skill(8);Skill(3);F(34);
+                F(91,powerState>=3);F(92,powerState==5);
+                if(powerState==-1) f[91]=f[92]=Color.Orange;
+                buffs.DivinePurpose=free;f[field]=unavailable;
+                Observe(0);Observe(.3,false);
+                Check(Preview().Key==14,"unusable or unknown Glory cannot hold Mastery at any power/free-proc state");
+            }
+            Reset(mode,.64);Skill(8);Skill(3);F(91);F(34);Observe(0);Observe(.3,false);
+            Check(Preview().Key==9,"executable Glory still spends before Mastery");
+            F(91,false);Observe(.4,true);Check(Preview().Key==14,"resampled spent power releases Mastery");
+            F(91);Target(0);Observe(.5,false);Check(Preview().Key==14,"no Glory target cannot hold self Mastery");
+            Reset(mode,.64);Skill(8);F(34);t=t with{AuraMasteryBelow=.60};HOLY.Inst.Thresholds=t;
+            Observe(0);Observe(.3,false);Check(Preview().Key!=14,"configured Mastery threshold is respected");
+        }
+        var legacyThresholds=JsonSerializer.Deserialize<HealingThresholds>("{\"GroupCritical\":0.45}")!;
+        Check(legacyThresholds.AuraMasteryBelow==.65,"old saved profiles receive the new65 default");
+        foreach(double invalid in new[]{0,1.1,double.NaN}) {
+            bool rejected=false;
+            try {(t with{AuraMasteryBelow=invalid}).Validate();} catch(InvalidDataException) {rejected=true;}
+            Check(rejected,"invalid Mastery threshold is rejected");
+        }
+
         // Raid target bindings authorize selection, not the self Mastery key.
         // Exercise real observations and Process with missing/unknown bindings,
         // both without a target and with a visible friendly target.
@@ -109,15 +146,14 @@ internal static class HolyMasteryTests
             Observe(.3);
             Check(Preview().Key==14,"confirmed ordinary Mastery does not depend on raid target bindings");
             foreach(var guard in new[]{
-                (9,Color.Black),(20,Color.Black),(28,Color.Black),(38,Color.Black),
-                (91,Color.White),(92,Color.White),(91,Color.Orange),(92,Color.Orange)
+                (9,Color.Black),(20,Color.Black),(28,Color.Black),(38,Color.Black)
             }) {
                 var previous=f[guard.Item1];f[guard.Item1]=guard.Item2;
-                Check(Preview().Key==0,"binding-independent Mastery retains cast/readiness/resource gate "+guard.Item1);
+                Check(Preview().Key==0,"binding-independent Mastery retains cast/readiness gate "+guard.Item1);
                 f[guard.Item1]=previous;
             }
             buffs.DivinePurpose=true;
-            Check(Preview().Key==0,"binding-independent ordinary Mastery retains free-spender priority");
+            Check(Preview().Key==14,"unusable free spender cannot block binding-independent Mastery");
             buffs.DivinePurpose=false;
             Check(HOLY.Decide(f,buffs,t with{RaidAutoAuraMastery=false},HOLY.Inst.Raid.CooldownContext,
                 raidRoster:HOLY.Inst.Raid.Roster,raidHealing:HOLY.Inst.Raid.Sample).Key==0,
@@ -160,7 +196,7 @@ internal static class HolyMasteryTests
             Reset(mode);Group(boundary.Item2/255.0);
             t=boundary.Item1 switch{
                 "Major"=>t with{Major=boundary.Item2/255.0},
-                "Severe"=>t with{GroupCritical=boundary.Item2/255.0},
+                "Severe"=>t with{AuraMasteryBelow=boundary.Item2/255.0},
                 _=>t with{Critical=boundary.Item2/255.0}
             };
             int Count(HolyMasterySample sample)=>boundary.Item1 switch{"Major"=>sample.Major,"Severe"=>sample.Severe,_=>sample.Urgent};
@@ -175,7 +211,7 @@ internal static class HolyMasteryTests
         F(43);Observe(.5,false);Check(Preview().Key==8,"range change requires fresh confirmation");
         Observe(.8,true);Check(Preview().Key==14,"range cohort reconfirms");
         f[43]=Color.Orange;Observe(.9,false);Check(Preview().Key==8,"unknown range is not confirmed injury");
-        F(43);Observe(1,true);t=t with{GroupCritical=.45};HOLY.Inst.Thresholds=t;Observe(1.1,false);
+        F(43);Observe(1,true);t=t with{AuraMasteryBelow=.45};HOLY.Inst.Thresholds=t;Observe(1.1,false);
         Check(!HOLY.Inst.CooldownContext.Mastery!.SevereConfirmed,"threshold changes invalidate prior confirmation");
 
         Reset();Skill(8);F(29);Observe(0);F(29,false);Observe(.3,false);

@@ -98,7 +98,14 @@ internal static class HolyPriorityTests
             foreach(int field in new[]{20+slot,30+slot}) {
                 foreach(var invalid in new[]{Color.Black,Color.Orange}) {
                     f[field]=invalid;
-                    Check(RaidTestFixture.Decide(f,buff,t).Key==0,"unavailable selected hard cast cannot fall back to the wrong health-band spell");
+                    Check(Spell(RaidTestFixture.Decide(f,buff,t).Key)==(slot==5?12:11),"unavailable or unknown preferred hard cast falls back to the other confirmed spell");
+                    int other=slot==5?6:5;
+                    f[30+other]=Color.Black;
+                    Check(RaidTestFixture.Decide(f,buff,t).Key==0,"neither usable hard cast means wait");
+                    f[30+other]=Color.White;
+                    f[10]=Color.Black;
+                    Check(RaidTestFixture.Decide(f,buff,t).Key==0,"cross-band hard-cast fallback still requires stationary");
+                    f[10]=Color.White;
                 }
                 f[field]=Color.White;
             }

@@ -197,11 +197,19 @@ internal sealed class HOLY
                 (!need||PartyHealingPriority.Compare(P(6)!.Value,1,P(8)!.Value,targetSlot,t,party,power)<=0);
         }
         bool HardFlash(double? hp)=>hp>=.75&&hp<.85;
-        bool CanHardCast(double? hp)=>hp is >0&&hp<t.HealBelow&&F(10)==true&&Skill(HardFlash(hp)?5:6);
+        int HardCast(double? hp) {
+            if(hp is not >0||hp>=t.HealBelow||F(10)!=true) return 0;
+            int preferred=HardFlash(hp)?5:6,other=preferred==5?6:5;
+            return Skill(preferred)?preferred:Skill(other)?other:0;
+        }
+        bool CanHardCast(double? hp)=>HardCast(hp)!=0;
         bool capped=F(92)==true;
         bool canSpend=F(91)==true||capped||buff.DivinePurpose==true;
-        HolyDecision? OrdinaryMastery()=>!emergency&&mastery&&F(19)==true&&F(41)==false&&
-            F(91)==false&&F(92)==false&&buff.DivinePurpose!=true?
+        // Only an executable spender may prepare Mastery. Missing resources,
+        // an unusable Glory or an unconfirmed ally must not hold a self cooldown.
+        bool masterySpender=canSpend&&Skill(3)&&(selfPriority||
+            (need&&targetConfirmed&&(best==0||F(45+best)==true)));
+        HolyDecision? OrdinaryMastery()=>!emergency&&mastery&&F(19)==true&&F(41)==false&&!masterySpender?
             new(14,HolyMasteryPolicy.Reason(masterySample,frames,t,false)):null;
         bool aoe=F(19)==true&&group.Aoe;
         bool big=F(19)==true&&group.Major;
@@ -319,7 +327,7 @@ internal sealed class HOLY
         if(toll&&F(91)==false&&(raid?!capped:F(92)==false)) return new(tollKey,raid?"团队有效群伤：鸣钟（;）":
             partyToll.Immediate?"小队至少3人低于大掉血线：鸣钟（0）":"小队至少3人缺血、总缺血≥40个百分点且连续两次确认：鸣钟（0）");
         if(healing&&wingsPressure&&wings) return new(13,raid?"持续／严重团队治疗需求：复仇之怒":"小队至少3人低于60%：复仇之怒");
-        if(mastery&&!emergency&&spender) return new(glory,"光环掌握附带鸣钟前先消耗圣能");
+        if(mastery&&!emergency&&masterySpender) return new(glory,"光环掌握附带鸣钟前先消耗可用荣耀圣令，再检查伤情");
         if(OrdinaryMastery() is {} normalMastery) return normalMastery;
         if(Shock(true) is { } fullShock) return fullShock;
         if(needsHeal&&infusion==true&&Skill(5)) return new(flash,"灌注Buff存在：圣光闪现");
@@ -330,9 +338,9 @@ internal sealed class HOLY
         if(Shock() is { } shock) return shock;
         if(needsHeal&&F(91)==true&&Skill(3)) return new(glory,"消耗3圣能荣耀圣令");
         if(needsHeal&&MovingHand(healHp)) return new(light,"移动中无其他可执行瞬发：神性之手圣光术兜底");
-        if(needsHeal&&CanHardCast(healHp)) return HardFlash(healHp)?
-            new(flash,"血量75%～<85%：站定读条圣光闪现"):
-            new(light,"闪现读条血量区间外：站定圣光术兜底");
+        if(needsHeal&&HardCast(healHp) is var cast&&cast!=0) return cast==5?
+            new(flash,HardFlash(healHp)?"血量75%～<85%：优先站定读条圣光闪现":"圣光术不可用：站定圣光闪现兜底"):
+            new(light,HardFlash(healHp)?"圣光闪现不可用：站定圣光术兜底":"闪现优先区间外：优先站定圣光术");
         if(!needsHeal&&!capped&&F(12)==true&&F(99)==true&&Skill(1)) return new(7,"距离内敌对目标审判");
         if(capped&&!needsHeal) return new(0,F(12)==true&&F(95) is null?
             "5圣能：盾击近战距离未知（点95），等待有效治疗消耗目标":

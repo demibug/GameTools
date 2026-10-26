@@ -106,6 +106,17 @@ assert(p[30][2]==255 and p[4][3]==255 and p[49][1]==255)
 local old=p[42][1];combat=true;Event("GROUP_ROSTER_UPDATE");HijiAddon.UpdateRaidHealing();assert(Packet()[42][1]~=old)
 secretMode=true;HijiAddon.UpdateRaidHealing();p=Packet();assert(p[30][2]==255 and p[4][3]==255 and p[1][1]==255)
 failure="raid7";HijiAddon.UpdateRaidHealing();assert(Packet()[7][1]==128);failure=nil
+local originalRange=C_Spell.IsSpellInRange
+local probes={}
+C_Spell.IsSpellDisabled=function(id) return id==19750 end
+C_Spell.IsSpellInRange=function(id,unit)
+ assert(id~=19750,"disabled Flash cannot block raid healing range");probes[id]=true;return originalRange(id,unit)
+end
+HijiAddon.UpdateRaidHealing();assert(Packet()[1][1]==255 and probes[82326],"learned enabled Light supplies range")
+C_Spell.IsSpellDisabled=function() error("disabled query failed") end
+HijiAddon.UpdateRaidHealing();assert(Packet()[1][1]==255,"failed auxiliary disabled query retains confirmed spell range")
+C_Spell.IsSpellDisabled=nil;C_Spell.IsSpellInRange=originalRange
+HijiAddon.UpdateRaidHealing();assert(Packet()[1][1]==255,"range recovers after disabled check recovers")
 raid=false;Drive();HijiAddon.UpdateRaidHealing();assert(next(named.HijiAddonRaidBindings.bindings)==nil and not cells[41].shown)
 raid=true;spec=66;Drive();HijiAddon.UpdateRaidHealing();assert(next(named.HijiAddonRaidBindings.bindings)==nil and not cells[41].shown)
 spec=65;Drive();HijiAddon.UpdateRaidHealing();p=Packet()

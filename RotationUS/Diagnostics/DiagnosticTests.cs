@@ -422,6 +422,7 @@ internal static class DiagnosticTests
         count += RaidHealingTests.Run();
         count += HolySacrificeTests.Run();
         count += HolyShieldLog.RunTests();
+        count += HolyCaptureDiagnostics.RunTests();
         count += ExpandedProtocolTests.Run();
         count += PartyRosterTests.Run();
         count += PartyRunicPowerTests.Run();

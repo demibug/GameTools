@@ -165,13 +165,12 @@ internal static class HolyPolicyTests
         F(92);Want(15,"capped available heal remains a valid Virtue follow-up");
         Skill(3);F(91);Want(15,"capped spender is a valid Virtue follow-up");
         Reset();Group(.80);Skill(9);Skill(6);buff.Infusion=false;
-        Want(0,"Light-only follow-up cannot replace Flash inside the Flash health band");
+        Want(15,"Light fallback supports Virtue inside the Flash priority band");
         Hp(8,.70);Member(2,.70);Want(15,"below75 permits executable hard Light after Virtue");
         Hp(7,.2);Want(15,"actual usable Light supports Virtue below old mana floor");
         F(36,false);Want(0,"unusable Light invalidates the only Virtue follow-up");
 
-        // A heal available for a different health band must not promise a
-        // Virtue follow-up that the actual recipient selection cannot execute.
+        // Virtue follows the same reciprocal hard-cast fallback as direct heals.
         foreach(bool raid in new[]{false,true})
         foreach(bool self in new[]{false,true})
         foreach(int field in new[]{26,36})
@@ -179,22 +178,26 @@ internal static class HolyPolicyTests
             Reset(raid);Group(.80);Hp(6,self?.70:.80);Member(1,self?.70:.80);
             Hp(8,self?.80:.70);Member(2,self?.80:.70);
             Skill(9);Skill(5);Skill(6);frames[field]=unavailable;
-            Want(0,"Virtue cannot borrow another recipient's Flash when the priority recipient needs unavailable Light");
-            Check(Tick(0)==0&&Tick(.1)==0,"repeated production samples do not open empty Virtue across health bands");
-            F(field);Want(15,"confirmed Light restores Virtue for the actual priority recipient");
-            Check(Tick(.2)==15,"production opens Virtue once its real follow-up becomes executable");
+            Want(15,"usable Flash fallback provides the actual priority recipient's Virtue follow-up");
+            Check(Tick(0)==15,"production opens Virtue with a fallback heal available");
             F(29,false);
-            Check(Tick(.3)==(self?3:12),"next production decision delivers Light to the priority recipient");
+            Check(Tick(.1)==(self?1:11),"production follows Virtue with fallback Flash on the priority recipient");
+            F(29);
+            F(field);Want(15,"confirmed Light restores Virtue for the actual priority recipient");
+            Check(Tick(.6)==15,"production opens Virtue with preferred Light after its repeat throttle");
+            F(29,false);
+            Check(Tick(.7)==(self?3:12),"next production decision delivers Light to the priority recipient");
         }
         foreach(bool raid in new[]{false,true}) {
             Reset(raid);Group(.80);Hp(6,.80);Member(1,.80);Member(3,.70);Skill(9);Skill(5);
-            int select=raid?203:103;
-            Want(select,"healthy-band current target cannot promise Virtue when triage will select a lower-band ally");
-            Check(Tick(0)==select,"production selects the lower-band ally without spending Virtue first");
+            Want(15,"Flash fallback supports Virtue before selecting a lower-health ally");
+            Check(Tick(0)==15,"production prepares Virtue with an executable fallback");
+            F(29,false);
+            Check(Tick(.05)==(raid?203:103),"then select the lower-health ally for follow-up healing");
             F(47,false);F(48);Hp(8,.70);
-            Check(Tick(.1)==0&&Tick(.2)==0,"target confirmation cannot unlock an unusable follow-up");
-            Skill(6);Check(Tick(.3)==15,"available Light opens Virtue after target confirmation");
-            F(29,false);Check(Tick(.4)==12,"confirmed newly selected ally receives the promised Light");
+            Check(Tick(.1)==0&&Tick(.2)==11,"two target confirmations release fallback Flash");
+            Skill(6);F(29);Check(Tick(.6)==15,"preferred Light can support the next Virtue request");
+            F(29,false);Check(Tick(.7)==12,"confirmed newly selected ally receives the promised Light");
 
             Reset(raid);Group(.84);Hp(6,.80);Member(1,.80);Skill(9);Skill(5);
             Check(Tick(0)==15,"self-priority Flash inside its band still permits useful Virtue");

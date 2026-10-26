@@ -122,11 +122,11 @@ internal sealed record HealingThresholds(double Critical=.20,double Major=.60,do
     double MinimumCoverage=.75,double HolyLightMana=.30,
     double TollLow=.80,double TollCritical=.60,double CooldownReviewSeconds=2,
     bool AutoWings=true,
-    bool RaidAutoWings=true,bool RaidAutoAuraMastery=true)
+    bool RaidAutoWings=true,bool RaidAutoAuraMastery=true,double AuraMasteryBelow=.65)
 {
     internal void Validate()
     {
-        double[] values={Critical,Major,HealBelow,GroupLow,GroupCritical,RaidLowFraction,RaidCriticalFraction,MinimumCoverage,HolyLightMana,TollLow,TollCritical};
+        double[] values={Critical,Major,HealBelow,GroupLow,GroupCritical,RaidLowFraction,RaidCriticalFraction,MinimumCoverage,HolyLightMana,TollLow,TollCritical,AuraMasteryBelow};
         if(values.Any(v=>!double.IsFinite(v)||v<=0||v>1)||Critical>=Major||Major>=HealBelow||GroupCritical>=GroupLow||TollCritical>=TollLow)
             throw new InvalidDataException("治疗阈值必须在0到1之间，且危急<大掉血<治疗线、群体危急线<群体低血线。");
         if(!double.IsFinite(CooldownReviewSeconds)||CooldownReviewSeconds<.5||CooldownReviewSeconds>10)

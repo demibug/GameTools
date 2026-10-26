@@ -10,6 +10,7 @@ internal sealed class HolyShieldLog
 {
     private readonly SavedLogStore store;
     private readonly Dictionary<int,Color> frames=new(100);
+    private readonly Dictionary<int,Color> captureDiagnostics=new(6);
     private readonly List<string> pendingPartyLines=new();
     private double lastSample=double.NegativeInfinity;
     private string lastSignature="";
@@ -29,13 +30,15 @@ internal sealed class HolyShieldLog
         if(now-lastSample<.25) return;
         lastSample=now;
         for(int i=0;i<layout.Frames.Length;i++) frames[i+1]=sample.At(layout.Frames[i]);
-        RecordFrames(frames,layout.HolyThresholds,live,executing,executionReason,now,HolyBuffs.Read(layout,sample.At));
+        captureDiagnostics.Clear();
+        for(int id=95;id<=100&&id<=layout.Bars.Length;id++) captureDiagnostics[id]=sample.At(layout.Bars[id-1]);
+        RecordFrames(frames,layout.HolyThresholds,live,executing,executionReason,now,HolyBuffs.Read(layout,sample.At),captureDiagnostics);
     }
 
-    internal void RecordFrames(Dictionary<int,Color> values,HealingThresholds thresholds,bool live,bool executing,string executionReason,double now,HolyBuffs? buffs=null)
+    internal void RecordFrames(Dictionary<int,Color> values,HealingThresholds thresholds,bool live,bool executing,string executionReason,double now,HolyBuffs? buffs=null,IReadOnlyDictionary<int,Color>? diagnostics=null)
     {
         string signature=$"有效采样={live}；执行开启={executing}；执行判断={executionReason}；"+
-            (live?Describe(values,thresholds,true,buffs):"采样无效，不能推断盾击阻挡原因");
+            (live?Describe(values,thresholds,true,buffs)+"；"+HolyCaptureDiagnostics.Describe(values,diagnostics):"采样无效，不能推断盾击阻挡原因");
         if(signature==lastSignature) return;
         if(Write(new[]{signature})) lastSignature=signature;
     }
@@ -55,7 +58,7 @@ internal sealed class HolyShieldLog
         if(lines.Length==0 && pendingPartyLines.Count==0) return true;
         try {
             Directory.CreateDirectory(store.DefaultDirectory);
-            string header=Started?"":"神圣自动诊断（盾击／小队资料／血DK／鸣钟／美德推定窗口／神性之手／牺牲联动圣佑）；仅状态变化写入，无定时重复；记录条件与请求，技能释放仅按冷却推定。"+Environment.NewLine;
+            string header=Started?"":"神圣自动诊断（圣光术点26／36采集原因及等级环境／盾击／小队资料／血DK／鸣钟／美德推定窗口／神性之手／牺牲联动圣佑）；仅状态变化写入，无定时重复；记录条件与请求，技能释放仅按冷却推定。"+Environment.NewLine;
             string timestamp=DateTimeOffset.Now.ToString("O");
             File.AppendAllText(Path,header+string.Join(Environment.NewLine,pendingPartyLines.Concat(lines.Select(line=>timestamp+" "+line)))+Environment.NewLine,new UTF8Encoding(false));
             pendingPartyLines.Clear();
@@ -154,7 +157,45 @@ internal sealed class HolyShieldLog
             writer.RecordFrames(values,new(),true,false,"改变",7);
             writer.RecordFrames(values,new(),true,false,"执行已关闭",8);
             Check(File.ReadAllLines(writer.Path).Length==4,"A to B to A records recovery");
-            writer.RecordFrames(values,new(),false,false,"采样无效",9);
+            using(var pixels=DiagnosticTests.Pattern(1)) {
+                var layout=Calibration.Find(pixels,new Size(1600,900));
+                for(int id=1;id<=100;id++) {
+                    var point=layout.Frames[id-1];pixels.SetPixel(point.X,point.Y,values[id]);
+                }
+                void Bar(int id,Color color) {var point=layout.Bars[id-1];pixels.SetPixel(point.X,point.Y,color);}
+                foreach(int id in new[]{26,36}) {var point=layout.Frames[id-1];pixels.SetPixel(point.X,point.Y,Color.Orange);}
+                Bar(95,Color.FromArgb(72,68,1));Bar(100,Color.FromArgb(72,68,1));
+                Bar(96,Color.FromArgb(4,1,0));Bar(97,Color.FromArgb(9,2,0));
+                Bar(98,Color.FromArgb(150,65,1));Bar(99,Color.FromArgb(90,60,70));
+                using var sample=new Captured((Bitmap)pixels.Clone(),new Rectangle(Point.Empty,pixels.Size));
+                writer.Record(sample,layout,true,false,"执行已关闭",8.1);
+                string failure=File.ReadAllText(writer.Path);
+                Check(failure.Contains("点26=未知；C_Spell.GetSpellCooldownDuration：接口调用报错")&&
+                    failure.Contains("点36=未知；C_Spell.IsSpellUsable：返回nil"),"real capture reads both diagnostic cells into the saved file");
+                writer.Record(sample,layout,true,false,"执行已关闭",8.4);
+                Check(File.ReadAllText(writer.Path)==failure,"unchanged capture failures never spam logs");
+                var changed=layout.Bars[95];sample.Image.SetPixel(changed.X,changed.Y,Color.FromArgb(7,3,0));
+                writer.Record(sample,layout,true,false,"执行已关闭",8.7);
+                Check(File.ReadAllText(writer.Path).Contains("冷却信息 isActive：字段受限"),"changed cause logs even when the primary point stays unknown");
+                foreach(int id in new[]{26,36}) {var point=layout.Frames[id-1];sample.Image.SetPixel(point.X,point.Y,Color.White);}
+                foreach(int id in new[]{96,97}) {var point=layout.Bars[id-1];sample.Image.SetPixel(point.X,point.Y,Color.Black);}
+                writer.Record(sample,layout,true,false,"执行已关闭",9);
+                Check(File.ReadAllLines(writer.Path).Last().Contains("点26=是")&&
+                    !File.ReadAllLines(writer.Path).Last().Contains("接口调用报错"),"recovery records fresh state without stale failure");
+                void SetBar(int id,Color color) {var point=layout.Bars[id-1];sample.Image.SetPixel(point.X,point.Y,color);}
+                SetBar(95,Color.FromArgb(72,68,2));SetBar(100,Color.FromArgb(72,68,2));
+                SetBar(96,Color.FromArgb(0,0,1));SetBar(97,Color.FromArgb(0,0,17));
+                writer.Record(sample,layout,true,false,"执行已关闭",9.3);
+                string auxiliary=File.ReadAllText(writer.Path);
+                Check(File.ReadAllLines(writer.Path).Last().Contains("点26=是")&&
+                    File.ReadAllLines(writer.Path).Last().Contains("禁用查询（辅助）=未知：接口报错"),"v2 capture logs auxiliary failure without hiding primary evidence");
+                writer.Record(sample,layout,true,false,"执行已关闭",9.6);
+                Check(File.ReadAllText(writer.Path)==auxiliary,"unchanged auxiliary failure is deduplicated");
+                SetBar(97,Color.FromArgb(0,0,2));writer.Record(sample,layout,true,false,"执行已关闭",9.9);
+                Check(File.ReadAllLines(writer.Path).Last().Contains("禁用查询（辅助）=否")&&
+                    !File.ReadAllLines(writer.Path).Last().Contains("接口报错"),"v2 auxiliary recovery is recorded independently");
+            }
+            writer.RecordFrames(values,new(),false,false,"采样无效",10);
             string invalid=File.ReadAllText(writer.Path);values[14]=Color.Yellow;
             writer.RecordFrames(values,new(),false,false,"采样无效",30);
             Check(File.ReadAllText(writer.Path)==invalid,"invalid pixel noise cannot repeat the same invalid state");

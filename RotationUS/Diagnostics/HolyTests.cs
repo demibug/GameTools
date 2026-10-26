@@ -154,7 +154,7 @@ internal static class HolyTests
         }
         foreach(int id in new[]{26,36}) {
             foreach(var color in new[]{Color.Black,Color.Orange}) {
-                f[id]=color;Want(0,"unavailable or unknown Light never falls back to low-health hard Flash");
+                f[id]=color;Want(11,"unavailable or unknown Light falls back to confirmed low-health hard Flash");
             }
             F(id);
         }
@@ -185,7 +185,7 @@ internal static class HolyTests
             if(mode==5) buff.DivinePurpose=true;
             if(mode==3) {Skill(6);buff.HandOfDivinity=true;}
             int key=mode switch {1 or 4=>1,2 or 5=>2,3=>3,_=>0};
-            Want(hp<.85&&mode!=3?key:0,$"self85 boundary mode={mode}, raid={raid}, hp={hp}");
+            Want(hp<.85?key:0,$"self85 boundary mode={mode}, raid={raid}, hp={hp}");
             Check(RaidTestFixture.Decide(f,buff,new(HealBelow:.80)).Key==0,$"self respects configured80 line mode={mode}, raid={raid}, hp={hp}");
         }
         // Check every ordinary target-healing branch at the new line in both
@@ -196,7 +196,7 @@ internal static class HolyTests
             Reset(raid);Hp(8,hp);Member(2,hp);Skill(spell);
             if(spell==3) F(91);
             if(spell==6) buff.HandOfDivinity=true;
-            int expected=hp>=.85?0:spell switch{2=>8,3=>9,5=>11,6=>0,_=>0};
+            int expected=hp>=.85?0:spell switch{2=>8,3=>9,5=>11,6=>12,_=>0};
             Want(expected,$"85 percent boundary for spell{spell}, raid={raid}, hp={hp}");
         }
         foreach(bool raid in new[]{false,true}) {
@@ -279,7 +279,7 @@ internal static class HolyTests
         buff.HandOfDivinity=null;Want(0,"unknown Hand never enables moving self Holy Light");
         F(10);Hp(6,.55);Hp(7,.4);Want(3,"stationary major self injury with no infusion and Shock cooldown uses hard-cast Light");
         Skill(5);Want(3,"eligible hard-cast self Light precedes ordinary Flash fallback");
-        Hp(7,.2);Want(3,"self Light uses actual usability instead of a mana percentage floor");F(36,false);Want(0,"unusable self Light cannot fall back to low-health hard Flash");F(36);
+        Hp(7,.2);Want(3,"self Light uses actual usability instead of a mana percentage floor");F(36,false);Want(1,"unusable self Light falls back to low-health hard Flash");F(36);
         F(10,false);Want(0,"ordinary self Flash requires stationary");F(10);
         Hp(6,.84);Want(1,"self stationary Flash now covers ordinary injury below85");Hp(6,.55);
         Skill(5,false);Want(3,"unlearned Flash does not block usable low-health Light");Skill(5);F(9,false);Want(0,"self hard cast waits for active cast");F(9);F(20,false);Want(0,"self hard cast waits for gcd");
