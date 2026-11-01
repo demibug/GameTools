@@ -409,6 +409,8 @@ internal static class DiagnosticTests
             foreach (string file in Directory.GetFiles(logsDirectory)) File.Delete(file);
             Directory.Delete(logsDirectory);
         }
+        count += ClassIdentityGate.RunTests();
+        count += HealingItemTrace.RunTests();
         count += FloatingWindowTests.Run();
         count += ArmsTests.Run();
         count += RetTests.Run();

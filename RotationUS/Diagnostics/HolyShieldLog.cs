@@ -15,6 +15,9 @@ internal sealed class HolyShieldLog
     private double lastSample=double.NegativeInfinity;
     private string lastSignature="";
     private bool remembered;
+    private string lastControl="";
+    private readonly HealingItemTrace itemTrace=new();
+    private Color? lastItemPacket;
     internal string Path {get;}
     internal bool Started {get;private set;}
     internal string? Error {get;private set;}
@@ -27,18 +30,23 @@ internal sealed class HolyShieldLog
 
     internal void Record(Captured sample,DiagnosticLayout layout,bool live,bool executing,string executionReason,double now)
     {
-        if(now-lastSample<.25) return;
+        Color? itemPacket=layout.Bars.Length>=50?sample.At(layout.Bars[49]):null;
+        if(now-lastSample<.25&&itemPacket==lastItemPacket) return;
         lastSample=now;
+        lastItemPacket=itemPacket;
         for(int i=0;i<layout.Frames.Length;i++) frames[i+1]=sample.At(layout.Frames[i]);
         captureDiagnostics.Clear();
+        if(layout.Bars.Length>=50) captureDiagnostics[50]=sample.At(layout.Bars[49]);
         for(int id=95;id<=100&&id<=layout.Bars.Length;id++) captureDiagnostics[id]=sample.At(layout.Bars[id-1]);
         RecordFrames(frames,layout.HolyThresholds,live,executing,executionReason,now,HolyBuffs.Read(layout,sample.At),captureDiagnostics);
     }
 
     internal void RecordFrames(Dictionary<int,Color> values,HealingThresholds thresholds,bool live,bool executing,string executionReason,double now,HolyBuffs? buffs=null,IReadOnlyDictionary<int,Color>? diagnostics=null)
     {
+        Color? itemPacket=diagnostics is not null&&diagnostics.TryGetValue(50,out var item)?item:null;
+        Write(itemTrace.Observe(values,itemPacket,live,executing,executionReason,now));
         string signature=$"有效采样={live}；执行开启={executing}；执行判断={executionReason}；"+
-            (live?Describe(values,thresholds,true,buffs)+"；"+HolyCaptureDiagnostics.Describe(values,diagnostics):"采样无效，不能推断盾击阻挡原因");
+            (live?Describe(values,thresholds,true,buffs)+"；"+HolyCaptureDiagnostics.Describe(values,diagnostics)+"；"+HealingItemTrace.Describe(values,itemPacket):"采样无效，不能推断盾击阻挡原因");
         if(signature==lastSignature) return;
         if(Write(new[]{signature})) lastSignature=signature;
     }
@@ -51,6 +59,11 @@ internal sealed class HolyShieldLog
         // append succeeds, including their original observation timestamps.
         Write(Array.Empty<string>());
     }
+    internal void RecordControl(string message)
+    {
+        if(message==lastControl) return;
+        if(Write(new[]{"[执行控制] "+message})) lastControl=message;
+    }
 
     private bool Write(IEnumerable<string> messages)
     {
@@ -58,7 +71,7 @@ internal sealed class HolyShieldLog
         if(lines.Length==0 && pendingPartyLines.Count==0) return true;
         try {
             Directory.CreateDirectory(store.DefaultDirectory);
-            string header=Started?"":"神圣自动诊断（圣光术点26／36采集原因及等级环境／盾击／小队资料／血DK／鸣钟／美德推定窗口／神性之手／牺牲联动圣佑）；仅状态变化写入，无定时重复；记录条件与请求，技能释放仅按冷却推定。"+Environment.NewLine;
+            string header=Started?"":"神圣自动诊断（执行控制及关闭来源／法力与低血量关键状态／治疗石和药水条件、使用请求及客户端反馈／圣光术采集／队伍与治疗策略）；仅状态变化写入；按键请求不代表成功，超时不等于失败；通用客户端提示未确认物品归属。"+Environment.NewLine;
             string timestamp=DateTimeOffset.Now.ToString("O");
             File.AppendAllText(Path,header+string.Join(Environment.NewLine,pendingPartyLines.Concat(lines.Select(line=>timestamp+" "+line)))+Environment.NewLine,new UTF8Encoding(false));
             pendingPartyLines.Clear();
@@ -97,7 +110,7 @@ internal sealed class HolyShieldLog
         if(group.Injured>0) blockers.Add($"低于治疗线成员={group.Injured}");
         if(group.Major) blockers.Add("群体严重掉血");
         string gateSummary=live?(blockers.Count==0?"全部盾击条件满足":"盾击阻挡="+string.Join("、",blockers)):"采样无效，不能推断盾击阻挡原因";
-        var fields=new[]{1,2,3,4,9,12,13,19,20,41,92,95,97,98,96,100};
+        var fields=new[]{1,2,3,4,9,10,12,13,16,17,19,20,22,23,25,26,29,30,32,33,35,36,39,40,41,91,92,95,97,98,96,100};
         string raw=string.Join("；",fields.Select(id=>$"{id}={State(id)}({Raw(id)})"));
         string probes=string.Join("；",HolyItemRange.Probes.Select(p=>$"{p.Range}码档物品{p.Item}[{p.Id}]="+
             (values.TryGetValue(p.Id,out var c)?HolyItemRange.Decode(c):"缺失")+$"({Raw(p.Id)})"));
@@ -108,7 +121,7 @@ internal sealed class HolyShieldLog
         }));
         return gateSummary+"；神圣意志="+(buffs?.PurposeState??"Buff未知")+
             (buffs?.PurposeExpiringConfirmed==true?"；临期例外：不要求5圣能／震击2充能":"；常规盾击资源条件")+
-            $"；自身HP={P(6)?.ToString("P1")??"未知"}；治疗线={thresholds.HealBelow:P0}；"+raw+"；"+probes+"；成员HP="+members;
+            $"；自身HP={P(6)?.ToString("P1")??"未知"}；法力[7]={P(7)?.ToString("P1")??"未知"}；目标HP[8]={P(8)?.ToString("P1")??"未知"}；治疗线={thresholds.HealBelow:P0}；"+raw+"；"+probes+"；成员HP="+members;
     }
 
     internal static int RunTests()
@@ -150,6 +163,7 @@ internal sealed class HolyShieldLog
             writer.RecordFrames(values,new(),true,false,"执行已关闭",0);
             string first=File.ReadAllText(writer.Path);
             Check(writer.Started&&writer.Error is null&&first.Contains("执行开启=False")&&first.Contains("近战范围"),"logging works without enabling input");
+            Check(first.Contains("法力[7]=")&&first.Contains("16=否")&&first.Contains("17=否")&&first.Contains("25=")&&first.Contains("35="),"mana, rescue item flags and fallback healing usability are recorded");
             writer.RecordFrames(values,new(),true,false,"执行已关闭",1);
             Check(File.ReadAllText(writer.Path)==first,"unchanged samples are deduplicated");
             writer.RecordFrames(values,new(),true,false,"执行已关闭",6);
@@ -216,6 +230,11 @@ internal sealed class HolyShieldLog
             Directory.Delete(System.IO.Path.Combine(blockedDirectory,"captures"));
             foreach(string file in Directory.GetFiles(blockedDirectory)) File.Delete(file);
             Directory.Delete(blockedDirectory);
+            writer.RecordControl("执行状态=关闭；原因=鼠标侧键1（物理事件）");
+            string control=File.ReadAllText(writer.Path);
+            Check(control.Contains("[执行控制] 执行状态=关闭；原因=鼠标侧键1"),"stop source is persisted in the automatic file");
+            writer.RecordControl("执行状态=关闭；原因=鼠标侧键1（物理事件）");
+            Check(File.ReadAllText(writer.Path)==control,"unchanged control messages deduplicated");
         } finally {
             foreach(string file in Directory.GetFiles(System.IO.Path.Combine(directory,"captures"))) File.Delete(file);
             Directory.Delete(System.IO.Path.Combine(directory,"captures"));

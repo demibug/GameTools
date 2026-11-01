@@ -21,30 +21,32 @@ internal sealed class RotationExecution
         this.execute = execute;
     }
     internal bool Enabled { get; private set; }
+    internal string LastStopReason { get; private set; } = "尚未开启";
+    internal event Action<bool,string>? StateChanged;
     internal event Action? EnabledChanged;
-    internal void Start(ClassProfile? profile = null)
+    internal void Start(ClassProfile? profile = null,string reason="用户开启执行")
     {
         CJQ.Inst.Reset();
         HOLY.Inst.CancelExecution();
         manualPauseUntil = 0; runningSpec = (profile ?? ClassProfiles.Protection).SpecId;
         if (Enabled) return;
-        Enabled = true; EnabledChanged?.Invoke();
+        Enabled = true; LastStopReason=""; EnabledChanged?.Invoke(); StateChanged?.Invoke(true,reason);
     }
-    internal void Stop()
+    internal void Stop(string reason="未指定来源")
     {
         CJQ.Inst.Reset();
         HOLY.Inst.CancelExecution();
         manualPauseUntil = 0; runningSpec = 0;
         if (!Enabled) return;
-        Enabled = false; EnabledChanged?.Invoke();
+        Enabled = false; LastStopReason=reason; EnabledChanged?.Invoke(); StateChanged?.Invoke(false,reason);
     }
     internal string Tick(GameWindow game, DiagnosticLayout layout, Captured sample, bool live, double now, ClassProfile? profile = null)
     {
-        if (!Enabled) return "执行已关闭";
-        if (!layout.CurrentProtocol) { Stop(); return "布局已升级，请重新定位100个色块"; }
+        if (!Enabled) return "执行已关闭："+LastStopReason;
+        if (!layout.CurrentProtocol) { Stop("布局协议过期，需重新定位"); return "布局已升级，请重新定位100个色块"; }
         profile ??= ClassProfiles.Protection;
         if (profile.SpecId != runningSpec || (layout.SpecId != 0 && layout.SpecId != profile.SpecId))
-        { Stop(); HOLY.Inst.Reset();return "职业 / 专精变化，执行已关闭"; }
+        { Stop("执行专精与已确认的采集专精不一致"); HOLY.Inst.Reset();return "职业 / 专精变化，执行已关闭"; }
         if (!live) { CJQ.Inst.Cancel(); if(profile.SpecId==65) {HOLY.Inst.Sacrifice.Reset("采样失效：联动已清除");HOLY.Inst.Raid.Reset();} return "执行等待有效职业数据 / 心跳"; }
         if (foreground() != game.Handle) { CJQ.Inst.Cancel(); if(profile.SpecId==65) {HOLY.Inst.Sacrifice.Reset("游戏不在前台：联动已清除");HOLY.Inst.Raid.Reset();} return "执行等待游戏处于前台"; }
         if (manualInput?.Invoke() ?? global::Program.ClassManualInputPressed(profile)) manualPauseUntil = now + .5;

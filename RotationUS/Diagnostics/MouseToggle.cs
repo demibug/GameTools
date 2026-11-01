@@ -41,7 +41,8 @@ internal sealed class MouseToggle : IDisposable
     private readonly MouseToggleEdges edges = new();
     private IntPtr hook;
 
-    internal MouseToggle(Action requestToggle)
+    internal MouseToggle(Action requestToggle) : this(_=>requestToggle()) { }
+    internal MouseToggle(Action<string> requestToggle)
     {
         callback = (code, message, data) =>
         {
@@ -49,7 +50,10 @@ internal sealed class MouseToggle : IDisposable
             if (code >= 0 && id is 0x207 or 0x208 or 0x20B or 0x20C)
             {
                 var mouse = Marshal.PtrToStructure<MouseData>(data);
-                if (edges.Observe(id, mouse.Data)) requestToggle();
+                if (edges.Observe(id, mouse.Data)) {
+                    string button=id==0x207?"鼠标中键":(mouse.Data>>16)==1?"鼠标侧键1":"鼠标侧键2";
+                    requestToggle(button+((mouse.Flags&1)!=0?"（注入事件）":"（物理事件）"));
+                }
             }
             return CallNextHookEx(hook, code, message, data);
         };

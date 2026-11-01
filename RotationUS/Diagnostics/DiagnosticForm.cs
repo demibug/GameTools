@@ -72,6 +72,8 @@ internal sealed class DiagnosticForm : Form
     private readonly Label executionStatus = new() { Text = "执行已关闭", AutoSize = true, ForeColor = Color.DarkSlateBlue, Padding = new Padding(0, 5, 0, 0) };
     private readonly RotationExecution execution;
     private readonly LoopStatusButton loopStatus = new();
+    private readonly ClassIdentityGate identityGate = new();
+    private bool waitingForIdentity;
     private readonly ToolTip loopTooltip = new();
     private readonly FloatingStatusForm floatingWindow;
     private bool inFloatingMode;
@@ -116,6 +118,7 @@ internal sealed class DiagnosticForm : Form
         floatingWindow.ExpandRequested += ExpandFromFloating;
         floatingWindow.PersistenceError += message => SetStatus(message);
         this.execution.EnabledChanged += SyncLoopStatus;
+        this.execution.StateChanged += RecordExecutionState;
         SyncLoopStatus();
         exportDirectory = this.savedLogs.LastDirectory;
         Text = "RotationUS · 职业执行与点位诊断";
@@ -162,7 +165,7 @@ internal sealed class DiagnosticForm : Form
         thunderMode.SelectedIndexChanged += (_, _) =>
         {
             if (updatingControls || layout is null || activeProfile?.SpecId != 72) return;
-            StopExecution(); var updated = layout.Copy(); updated.ThunderMode = thunderMode.SelectedIndex == 1 ? "exact-stacks" : "presence-only";
+            StopExecution("修改雷霆模式"); var updated = layout.Copy(); updated.ThunderMode = thunderMode.SelectedIndex == 1 ? "exact-stacks" : "presence-only";
             this.profileLayouts.Save(activeProfile!, updated); layout = updated; samplingLayout = null; lastValues.Clear();
             AddLog("雷霆轰击模式：" + updated.ThunderMode + "；特殊点只判断有无，精确模式需验证层数接口。");
         };
@@ -181,7 +184,7 @@ internal sealed class DiagnosticForm : Form
         furyPoints.DisableRequested+=key=>
         {
             if(layout is null || activeProfile?.SpecId!=72) return;
-            StopExecution();var updated=layout.Copy();
+            StopExecution("停用／修改特殊点");var updated=layout.Copy();
             if(updated.SpecialPoints.TryGetValue(key,out var point)) point.Enabled=false;
             SaveSpecialLayout(updated,key);
         };
@@ -189,7 +192,7 @@ internal sealed class DiagnosticForm : Form
         retPoints.SaveRequested+=key=>SaveSpecial(key);
         retPoints.DisableRequested+=key=> {
             if(layout is null || activeProfile?.SpecId!=70) return;
-            StopExecution();var updated=layout.Copy();
+            StopExecution("停用／修改特殊点");var updated=layout.Copy();
             if(updated.SpecialPoints.TryGetValue(key,out var point)) point.Enabled=false;
             SaveSpecialLayout(updated,key);
         };
@@ -201,7 +204,7 @@ internal sealed class DiagnosticForm : Form
         armsPoints.DisableRequested+=key=>
         {
             if(layout is null || activeProfile?.SpecId!=71) return;
-            StopExecution();var updated=layout.Copy();
+            StopExecution("停用／修改特殊点");var updated=layout.Copy();
             if(updated.SpecialPoints.TryGetValue(key,out var point)) point.Enabled=false;
             SaveSpecialLayout(updated,key);
         };
@@ -213,7 +216,7 @@ internal sealed class DiagnosticForm : Form
         holyPoints.DisableRequested+=key=>
         {
             if(layout is null || activeProfile?.SpecId!=65) return;
-            StopExecution();var updated=layout.Copy();
+            StopExecution("停用／修改特殊点");var updated=layout.Copy();
             if(updated.SpecialPoints.TryGetValue(key,out var point)) point.Enabled=false;
             SaveSpecialLayout(updated,key);
         };
@@ -263,7 +266,7 @@ internal sealed class DiagnosticForm : Form
         var bottom = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
         bottom.RowStyles.Add(new(SizeType.Absolute, 38)); bottom.RowStyles.Add(new(SizeType.Percent, 100));
         bottom.Controls.Add(status, 0, 0); bottom.Controls.Add(changes, 0, 1); content.Controls.Add(bottom, 0, 3);
-        games.SelectedIndexChanged += (_, _) => { InvalidateSpecialPick(); StopExecution(); identity = default; activeProfile = null; fields = ClassProfiles.RawFields; classStatus.Text = "当前职业：等待插件识别"; if (!locating) RestoreLiveRows(); ApplyControls(); heartbeat.Reset(); locator.Reset(); locationVerified = false; lastValues.Clear(); SetUnknown("游戏窗口已切换，等待有效采样"); };
+        games.SelectedIndexChanged += (_, _) => { InvalidateSpecialPick(); StopExecution("游戏窗口选择变化"); identity = default;identityGate.Reset();waitingForIdentity=false; activeProfile = null; fields = ClassProfiles.RawFields; classStatus.Text = "当前职业：等待插件识别"; if (!locating) RestoreLiveRows(); ApplyControls(); heartbeat.Reset(); locator.Reset(); locationVerified = false; lastValues.Clear(); SetUnknown("游戏窗口已切换，等待有效采样"); };
         timer.Tick += (_, _) => TickCapture();
         logDisplayTimer.Tick += (_, _) => { if (Visible && !inFloatingMode) FlushLogDisplay(); };
         logDisplayTimer.Start();
@@ -276,10 +279,10 @@ internal sealed class DiagnosticForm : Form
             {
                 try
                 {
-                    mouseToggle = new MouseToggle(() =>
+                    mouseToggle = new MouseToggle(source =>
                     {
                         if (!IsDisposed && IsHandleCreated && !modalOperation)
-                            BeginInvoke((Action)(() => { if (!IsDisposed && !modalOperation) ToggleExecution(); }));
+                            BeginInvoke((Action)(() => { if (!IsDisposed && !modalOperation) ToggleExecution(source); }));
                     });
                 }
                 catch (Exception e) { SetStatus(e.Message); }
@@ -291,8 +294,10 @@ internal sealed class DiagnosticForm : Form
         if (disposing)
         {
             execution.EnabledChanged -= SyncLoopStatus;
+            execution.StateChanged -= RecordExecutionState;
             floatingWindow.Dispose(); loopTooltip.Dispose();
-            execution.Stop(); mouseToggle?.Dispose(); mouseToggle = null;
+            if(execution.Enabled) RecordExecutionState(false,"程序窗口关闭／释放");
+            execution.Stop("程序窗口关闭／释放"); mouseToggle?.Dispose(); mouseToggle = null;
             timer.Stop(); timer.Dispose(); captureBuffer.Dispose();
             logDisplayTimer.Stop(); logDisplayTimer.Dispose();
             preview.Source = null; captured?.Dispose(); captured = null;
@@ -433,8 +438,9 @@ internal sealed class DiagnosticForm : Form
     private bool SelectClass(ClassIdentity next, DiagnosticLayout geometry, bool force = false)
     {
         if (!force && identity == next) return false;
+        StopExecution($"确认职业／专精切换：{identity.SpecId}/{identity.ClassId} → {next.SpecId}/{next.ClassId}");
         ResetPartyRoster();
-        StopExecution(); InvalidateSpecialPick(); heartbeat.Reset();
+        InvalidateSpecialPick(); heartbeat.Reset();identityGate.Reset();
         var profile = ClassProfiles.Find(next.SpecId);
         if (profile?.ClassId != next.ClassId) profile = null;
         var selectedLayout = profile is null ? geometry.Copy() : profileLayouts.Load(profile, geometry);
@@ -487,7 +493,7 @@ internal sealed class DiagnosticForm : Form
     private void BeginLocator(string reason)
     {
         InvalidateSpecialPick();
-        StopExecution();
+        StopExecution("进入定位测试");
         locating = true; locate.Text = "退出定位测试"; frozen = false; pause.Text = "暂停查看";
         locator.Reset(); locationVerified = false; lastLocateScan = -10; heartbeat.Reset();
         grid.Rows.Clear(); grid.Columns[1].HeaderText = "定位测试点"; grid.Columns[5].HeaderText = "预期颜色 / 校验结果"; grid.Columns[6].HeaderText = "校验时间";
@@ -561,7 +567,7 @@ internal sealed class DiagnosticForm : Form
     {
         var pending=furyKey is null?pendingSpecialPick:activeProfile?.SpecId==65?holyPoints.Rows[furyKey].Pending:activeProfile?.SpecId==70?retPoints.Rows[furyKey].Pending:activeProfile?.SpecId==71?armsPoints.Rows[furyKey].Pending:furyPoints.Rows[furyKey].Pending;
         if (updatingControls || modalOperation || pending is not { } selected) return;
-        StopExecution();
+        StopExecution("保存特殊点配置");
         try
         {
             if (layout is null) throw new InvalidOperationException("先校准标准点位，再设置特殊点。");
@@ -622,7 +628,7 @@ internal sealed class DiagnosticForm : Form
     {
         if (modalOperation) return;
         if(furyKey is null) InvalidateSpecialPick(); else if(activeProfile?.SpecId==65) holyPoints.InvalidatePick(furyKey); else if(activeProfile?.SpecId==70) retPoints.InvalidatePick(furyKey); else if(activeProfile?.SpecId==71) armsPoints.InvalidatePick(furyKey); else furyPoints.InvalidatePick(furyKey);
-        StopExecution();
+        StopExecution("开始取点");
         modalOperation = true; timer.Stop();
         try
         {
@@ -660,15 +666,15 @@ internal sealed class DiagnosticForm : Form
     }
     private void TogglePause()
     {
-        StopExecution();
+        StopExecution("用户暂停／继续查看采样");
         frozen = !frozen; pause.Text = frozen ? "继续采样" : "暂停查看";
         if (frozen) { ResetPartyRoster("已暂停采样：小队资料和实时能量已清除"); SetStatus($"已暂停查看 · 最后采样 {capturedAt:HH:mm:ss.fff}"); }
         else { heartbeat.Reset(); TickCapture(); }
     }
-    private void ToggleExecution()
+    private void ToggleExecution(string source="执行按钮")
     {
         if (modalOperation) return;
-        if (execution.Enabled) { StopExecution(); AddLog("执行已关闭（中键 / 侧键 / 按钮）。"); return; }
+        if (execution.Enabled) { StopExecution("用户关闭："+source); AddLog("执行已关闭："+source); return; }
         try
         {
             if (locating) throw new InvalidOperationException("先退出定位测试，并在游戏输入 /hiji locate off。");
@@ -679,7 +685,7 @@ internal sealed class DiagnosticForm : Form
             if (size.Width != layout.ClientWidth || size.Height != layout.ClientHeight)
                 throw new InvalidOperationException("游戏尺寸已变化，请重新定位后开启执行。");
             frozen = false; pause.Text = "暂停查看"; heartbeat.Reset();
-            execution.Start(activeProfile); timer.Interval = 30;
+            execution.Start(activeProfile,"用户开启："+source); timer.Interval = 30;
             lastHolyExecutionReason = "";
             ResetPresentation();
             run.Text = "关闭执行（中键）"; executionStatus.Text = "执行等待有效职业数据 / 心跳";
@@ -687,11 +693,15 @@ internal sealed class DiagnosticForm : Form
         }
         catch (Exception e) { SetStatus("无法开启执行：" + e.Message); }
     }
-    private void StopExecution()
+    private void StopExecution(string reason="界面操作", [System.Runtime.CompilerServices.CallerMemberName] string caller="")
     {
-        execution.Stop(); timer.Interval = 100;
+        execution.Stop(reason+"（"+caller+"）"); timer.Interval = 100;
         ResetPresentation();
         run.Text = "开启执行（中键）"; executionStatus.Text = "执行已关闭";
+    }
+    private void RecordExecutionState(bool enabled,string reason)
+    {
+        holyShieldLog.RecordControl($"执行状态={(enabled?"开启":"关闭")}；原因={reason}；已选职业={identity.SpecId}/{identity.ClassId}");
     }
     private void TickCapture()
     {
@@ -713,9 +723,23 @@ internal sealed class DiagnosticForm : Form
             AvoidFloatingCapture(game, samplingBounds, size);
             var next = captureBuffer.Read(game, samplingBounds, OwnBounds, size);
             int mode = Colors.Kind(next.At(layout.Markers[0]));
-            var nextIdentity = ClassProfiles.Identify(next.At(layout.Markers[1]));
-            if (SelectClass(nextIdentity, layout)) return;
+            var identityColor=next.At(layout.Markers[1]);
+            var nextIdentity = ClassProfiles.Identify(identityColor);
             bool alive = heartbeat.Observe(next.At(layout.Markers[2]), clock.Elapsed.TotalSeconds);
+            if(!identityGate.Observe(identity,nextIdentity,mode==2&&alive,clock.Elapsed.TotalSeconds)) {
+                string detail=$"职业标记等待恢复／确认；当前={identity.SpecId}/{identity.ClassId}；候选={nextIdentity.SpecId}/{nextIdentity.ClassId}；RGB={identityColor.R},{identityColor.G},{identityColor.B}；模式={mode}；心跳={alive}；激活保留={execution.Enabled}";
+                holyShieldLog.RecordControl(detail);
+                waitingForIdentity=true;
+                CJQ.Inst.Cancel();HOLY.Inst.CancelExecution();
+                executionStatus.Text=execution.Enabled?"执行暂停发送：等待职业标记恢复／确认（激活保留）":"执行已关闭："+execution.LastStopReason;
+                SetStatus(detail);
+                return;
+            }
+            if(waitingForIdentity) {
+                holyShieldLog.RecordControl($"职业标记已恢复／确认：{nextIdentity.SpecId}/{nextIdentity.ClassId}；RGB={identityColor.R},{identityColor.G},{identityColor.B}；激活={execution.Enabled}");
+                waitingForIdentity=false;
+            }
+            if (SelectClass(nextIdentity, layout)) return;
             bool live = mode == 2 && activeProfile is not null && alive;
             // Receive metadata even with execution disabled. Never acquire it from combat frames.
             bool? PartyFlag(int id) => FuryBuffs.Boolean(next.At(layout.Frames[id-1]));
@@ -996,7 +1020,7 @@ internal sealed class DiagnosticForm : Form
     {
         modalOperation = true;
         bool wasFrozen = frozen; frozen = true;
-        StopExecution();
+        StopExecution("用户清空日志");
         try
         {
             var result = savedLogs.ClearContents();
@@ -1016,7 +1040,7 @@ internal sealed class DiagnosticForm : Form
         modalOperation = true;
         bool wasFrozen = frozen;
         frozen = true;
-        StopExecution();
+        StopExecution("用户保存截图与日志");
         try
         {
             if (captured is null || capturedLayout is null) throw new InvalidOperationException("还没有采样画面。");
