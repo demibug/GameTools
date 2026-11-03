@@ -6,6 +6,8 @@ namespace RotationUS.Diagnostics;
 internal sealed class RotationExecution
 {
     private double manualPauseUntil;
+    private string manualReason="";
+    internal string LastInputDetails {get;private set;}="";
     private readonly Func<IntPtr> foreground;
     private readonly Func<bool>? manualInput;
     private readonly Action<Dictionary<int, Color>, Dictionary<int, Color>>? execute;
@@ -42,6 +44,7 @@ internal sealed class RotationExecution
     }
     internal string Tick(GameWindow game, DiagnosticLayout layout, Captured sample, bool live, double now, ClassProfile? profile = null)
     {
+        LastInputDetails="";
         if (!Enabled) return "执行已关闭："+LastStopReason;
         if (!layout.CurrentProtocol) { Stop("布局协议过期，需重新定位"); return "布局已升级，请重新定位100个色块"; }
         profile ??= ClassProfiles.Protection;
@@ -49,8 +52,14 @@ internal sealed class RotationExecution
         { Stop("执行专精与已确认的采集专精不一致"); HOLY.Inst.Reset();return "职业 / 专精变化，执行已关闭"; }
         if (!live) { CJQ.Inst.Cancel(); if(profile.SpecId==65) {HOLY.Inst.Sacrifice.Reset("采样失效：联动已清除");HOLY.Inst.Raid.Reset();} return "执行等待有效职业数据 / 心跳"; }
         if (foreground() != game.Handle) { CJQ.Inst.Cancel(); if(profile.SpecId==65) {HOLY.Inst.Sacrifice.Reset("游戏不在前台：联动已清除");HOLY.Inst.Raid.Reset();} return "执行等待游戏处于前台"; }
-        if (manualInput?.Invoke() ?? global::Program.ClassManualInputPressed(profile)) manualPauseUntil = now + .5;
-        if (now < manualPauseUntil) {if(profile.SpecId==65) HOLY.Inst.CancelExecution(clearSacrifice:false);return "执行让出手动按键（500 ms）";}
+        if (manualInput?.Invoke() ?? global::Program.ClassManualInputPressed(profile)) {
+            manualPauseUntil = now + .5;
+            manualReason=manualInput is not null?"测试输入":global::Program.ClassManualKeyDescription(profile);
+        }
+        if (now < manualPauseUntil) {
+            LastInputDetails=$"触发键状态={manualReason}；剩余让出窗口={(manualPauseUntil-now)*1000:F0}ms（系统按键状态，不证明物理操作来源）";
+            if(profile.SpecId==65) HOLY.Inst.CancelExecution(clearSacrifice:false);return "执行让出手动按键（500 ms）";
+        }
         for (int i = 0; i < layout.Frames.Length; i++) frames[i + 1] = sample.At(layout.Frames[i]);
         for (int i = 0; i < layout.Bars.Length; i++) bars[i + 1] = sample.At(layout.Bars[i]);
         if (layout.SpecialEnabled) frames[DisplayProtocol.SpecialStart] = sample.At(layout.Special);

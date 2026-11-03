@@ -289,9 +289,12 @@ internal static class DiagnosticTests
             Check(executedFrames![30].ToArgb() == sample.At(example.Frames[29]).ToArgb()
                 && executedBars![2].ToArgb() == sample.At(example.Bars[1]).ToArgb(), "execution reads calibrated coordinates including point 30");
             manual = true; runner.Tick(game, example, sample, true, .1);
+            Check(runner.LastInputDetails.Contains("测试输入")&&runner.LastInputDetails.Contains("500ms"),"manual pause logs triggering input evidence");
             manual = false; runner.Tick(game, example, sample, true, .59);
+            Check(runner.LastInputDetails.Contains("10ms"),"manual pause logs remaining grace period");
             Check(executions == 1, "manual input gives a 500 ms pause");
             runner.Tick(game, example, sample, true, .61);
+            Check(runner.LastInputDetails.Length==0,"manual input evidence cleared on recovery");
             Check(executions == 2, "execution resumes after manual pause");
             runner.Stop(); runner.Tick(game, example, sample, true, 1);
             Check(executions == 2, "middle toggle off blocks further execution");
@@ -410,6 +413,7 @@ internal static class DiagnosticTests
             Directory.Delete(logsDirectory);
         }
         count += ClassIdentityGate.RunTests();
+        count += CaptureStateTrace.RunTests();
         count += HealingItemTrace.RunTests();
         count += FloatingWindowTests.Run();
         count += ArmsTests.Run();

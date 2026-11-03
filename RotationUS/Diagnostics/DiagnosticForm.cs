@@ -726,7 +726,10 @@ internal sealed class DiagnosticForm : Form
             var identityColor=next.At(layout.Markers[1]);
             var nextIdentity = ClassProfiles.Identify(identityColor);
             bool alive = heartbeat.Observe(next.At(layout.Markers[2]), clock.Elapsed.TotalSeconds);
-            if(!identityGate.Observe(identity,nextIdentity,mode==2&&alive,clock.Elapsed.TotalSeconds)) {
+            bool accepted=identityGate.Observe(identity,nextIdentity,mode==2&&alive,clock.Elapsed.TotalSeconds);
+            holyShieldLog.RecordCapture(next,layout,accepted,alive,heartbeat.Age(clock.Elapsed.TotalSeconds),
+                global::Program.GetForegroundWindow(),game,execution.Enabled,clock.Elapsed.TotalSeconds);
+            if(!accepted) {
                 string detail=$"职业标记等待恢复／确认；当前={identity.SpecId}/{identity.ClassId}；候选={nextIdentity.SpecId}/{nextIdentity.ClassId}；RGB={identityColor.R},{identityColor.G},{identityColor.B}；模式={mode}；心跳={alive}；激活保留={execution.Enabled}";
                 holyShieldLog.RecordControl(detail);
                 waitingForIdentity=true;
@@ -773,7 +776,8 @@ internal sealed class DiagnosticForm : Form
             if(activeProfile?.SpecId==65) {
                 RecordPartyDiagnostics(roster,power,id=>next.At(layout.Frames[id-1]),PartyFlag(1),partyRoster.Status,partyPower.Status);
                 RecordHealingDiagnostics(live?HolyBuffs.Read(layout,next.At):new());
-                holyShieldLog.Record(next,layout,live,execution.Enabled,executionText,clock.Elapsed.TotalSeconds);
+                holyShieldLog.Record(next,layout,live,execution.Enabled,executionText+
+                    (execution.LastInputDetails.Length>0?"；"+execution.LastInputDetails:""),clock.Elapsed.TotalSeconds);
                 if(holyShieldLog.Started&&!shieldLogAnnounced) {
                     shieldLogAnnounced=true;AddLog("神圣自动诊断日志（含小队／血DK）："+holyShieldLog.Path,"trace-path");
                 }
@@ -790,6 +794,7 @@ internal sealed class DiagnosticForm : Form
                 lastHolyExecutionReason = executionText;
                 AddLog("神圣执行判断：" + executionText,"holy-execution");
             }
+            holyShieldLog.RecordCaptureSucceeded();
             if (!presentation.Due(clock.Elapsed.TotalSeconds, Visible && !inFloatingMode && WindowState != FormWindowState.Minimized)) return;
             // Observe/log every presentation sample as before. Only expensive visual
             // updates run at 2 Hz; neither execution nor file logs use this gate.
@@ -846,6 +851,7 @@ internal sealed class DiagnosticForm : Form
         catch (Exception e)
         {
             heartbeat.Reset();
+            holyShieldLog.RecordCaptureError(e,execution.Enabled);
             SetUnknown(e.Message);
         }
     }
@@ -925,6 +931,7 @@ internal sealed class DiagnosticForm : Form
     }
     private void SetUnknown(string reason)
     {
+        holyShieldLog.RecordUnavailable(reason,execution.Enabled);
         ResetPartyRoster(reason);
         executionStatus.Text = execution.Enabled ? "执行等待有效采样" : "执行已关闭";
         if (inFloatingMode) { SetStatus(reason); return; }

@@ -467,6 +467,12 @@ class Program
     }
 
     internal static bool ClassManualInputPressed(RotationUS.Diagnostics.ClassProfile profile) => IsSkipKeyPressed(profile.SkipKeys());
+    // Read-only evidence after the existing pause check; this does not change its result.
+    internal static string ClassManualKeyDescription(RotationUS.Diagnostics.ClassProfile profile)
+    {
+        var keys=profile.SkipKeys().Append(VK_MENU).Distinct().Where(IsKeyPressed).ToArray();
+        return keys.Length==0?"查询时已松开":string.Join("、",keys.Select(key=>$"{(System.Windows.Forms.Keys)key}(0x{key:X2})"));
+    }
     internal static void ExecuteClassSample(RotationUS.Diagnostics.ClassProfile profile, Dictionary<int, Color> frames, Dictionary<int, Color> bars)
     {
         dictState.Clear();

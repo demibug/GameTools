@@ -18,6 +18,8 @@ internal sealed class HolyShieldLog
     private string lastControl="";
     private readonly HealingItemTrace itemTrace=new();
     private Color? lastItemPacket;
+    private readonly CaptureStateTrace captureState=new();
+    private string lastCaptureError="",lastUnavailable="";
     internal string Path {get;}
     internal bool Started {get;private set;}
     internal string? Error {get;private set;}
@@ -39,6 +41,13 @@ internal sealed class HolyShieldLog
         if(layout.Bars.Length>=50) captureDiagnostics[50]=sample.At(layout.Bars[49]);
         for(int id=95;id<=100&&id<=layout.Bars.Length;id++) captureDiagnostics[id]=sample.At(layout.Bars[id-1]);
         RecordFrames(frames,layout.HolyThresholds,live,executing,executionReason,now,HolyBuffs.Read(layout,sample.At),captureDiagnostics);
+    }
+
+    internal void RecordCapture(Captured sample,DiagnosticLayout layout,bool accepted,bool heartbeat,double? age,
+        IntPtr foreground,GameWindow game,bool executing,double now)
+    {
+        var message=captureState.Observe(sample,layout,accepted,heartbeat,age,foreground,game,executing,now);
+        if(message is not null) Write(new[]{message});
     }
 
     internal void RecordFrames(Dictionary<int,Color> values,HealingThresholds thresholds,bool live,bool executing,string executionReason,double now,HolyBuffs? buffs=null,IReadOnlyDictionary<int,Color>? diagnostics=null)
@@ -63,6 +72,26 @@ internal sealed class HolyShieldLog
     {
         if(message==lastControl) return;
         if(Write(new[]{"[执行控制] "+message})) lastControl=message;
+    }
+
+    internal void RecordCaptureError(Exception error,bool executing)
+    {
+        string message=$"采集／执行异常；激活保留={executing}；{error}";
+        if(message==lastCaptureError) return;
+        if(Write(new[]{"[执行控制] "+message})) lastCaptureError=message;
+    }
+    internal void RecordUnavailable(string reason,bool executing)
+    {
+        string message=$"采集不可用；原因={reason}；激活保留={executing}";
+        if(message==lastUnavailable) return;
+        if(Write(new[]{"[执行控制] "+message})) lastUnavailable=message;
+    }
+    internal void RecordCaptureSucceeded()
+    {
+        if(lastCaptureError.Length==0&&lastUnavailable.Length==0) return;
+        if(Write(new[]{"[执行控制] 采集流程恢复；后续是否允许执行仍由采样校验与激活状态决定"})) {
+            lastCaptureError="";lastUnavailable="";
+        }
     }
 
     private bool Write(IEnumerable<string> messages)
@@ -235,6 +264,15 @@ internal sealed class HolyShieldLog
             Check(control.Contains("[执行控制] 执行状态=关闭；原因=鼠标侧键1"),"stop source is persisted in the automatic file");
             writer.RecordControl("执行状态=关闭；原因=鼠标侧键1（物理事件）");
             Check(File.ReadAllText(writer.Path)==control,"unchanged control messages deduplicated");
+            var error=new InvalidOperationException("synthetic capture failure");
+            writer.RecordCaptureError(error,true);writer.RecordUnavailable("capture failure",true);
+            string failed=File.ReadAllText(writer.Path);
+            writer.RecordCaptureError(error,true);writer.RecordUnavailable("capture failure",true);
+            Check(File.ReadAllText(writer.Path)==failed,"exception and unavailable causes deduplicate independently");
+            writer.RecordCaptureSucceeded();
+            Check(File.ReadAllText(writer.Path).Contains("采集流程恢复"),"capture recovery persisted");
+            writer.RecordCaptureError(error,true);
+            Check(File.ReadAllText(writer.Path).Split("synthetic capture failure").Length==3,"same error after recovery is a new episode");
         } finally {
             foreach(string file in Directory.GetFiles(System.IO.Path.Combine(directory,"captures"))) File.Delete(file);
             Directory.Delete(System.IO.Path.Combine(directory,"captures"));

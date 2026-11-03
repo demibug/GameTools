@@ -112,7 +112,7 @@ internal sealed class DiagnosticLayout
         get
         {
             Validate();
-            var pts = Frames.Concat(Bars).Concat(Markers).Concat(SpecialEnabled ? new[] { Special } : Array.Empty<SamplePoint>()).Concat(SpecialPoints.Values.Where(s => s.Enabled).Select(s => s.Point)).ToArray();
+            var pts = Frames.Concat(Bars).Concat(Markers).Concat(CaptureStateTrace.Points(this)).Concat(SpecialEnabled ? new[] { Special } : Array.Empty<SamplePoint>()).Concat(SpecialPoints.Values.Where(s => s.Enabled).Select(s => s.Point)).ToArray();
             int left = Math.Max(0, pts.Min(p => p.X) - 6), top = Math.Max(0, pts.Min(p => p.Y) - 3);
             return Rectangle.FromLTRB(left, top, Math.Min(ClientWidth, pts.Max(p => p.X) + 7), Math.Min(ClientHeight, pts.Max(p => p.Y) + 5));
         }
@@ -207,6 +207,7 @@ internal sealed class Heartbeat
     private int previous = -1;
     private double changedAt;
     private bool changed;
+    internal double? Age(double now)=>!changed?null:Math.Max(0,now-changedAt);
     public void Reset() { previous = -1; changedAt = 0; changed = false; }
     public bool Observe(Color color, double now)
     {
