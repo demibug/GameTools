@@ -1,0 +1,1168 @@
+#nullable enable
+using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Text;
+using System.Windows.Forms;
+
+namespace RotationUS.Diagnostics;
+
+internal sealed class DiagnosticForm : Form
+{
+    private readonly ComboBox games = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 330 };
+    private readonly Label status = new() { AutoSize = true, ForeColor = Color.DarkSlateBlue, Padding = new Padding(5) };
+    private readonly DataGridView grid = new BufferedDataGridView() { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, AllowUserToDeleteRows = false, RowHeadersVisible = false, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false, BackgroundColor = Color.White, BorderStyle = BorderStyle.None };
+    // A positive extent prevents a whole-list width scan on each eviction.
+    private readonly ListBox changes = new() { Dock = DockStyle.Fill, HorizontalScrollbar = true, HorizontalExtent = 1 };
+    private readonly PixelPreview preview = new();
+    private readonly System.Windows.Forms.Timer timer = new() { Interval = 100 };
+    private readonly Stopwatch clock = Stopwatch.StartNew();
+    private readonly Heartbeat heartbeat = new();
+    private readonly PartyRosterCache partyRoster = new();
+    private readonly PartyRunicPowerCache partyPower = new();
+    private readonly PartyRosterPanel partyPanel = new();
+    private readonly PartyDiagnosticLog partyDiagnostics = new();
+    private readonly HolyHealingDiagnosticLog healingDiagnostics = new();
+    private readonly HolyMasteryDiagnosticLog masteryDiagnostics = new();
+    private readonly Dictionary<int,Color> healingFrames = new();
+    private readonly StateChangeLog logStates = new();
+    private readonly CaptureBuffer captureBuffer = new();
+    private readonly PresentationSchedule presentation = new();
+    private readonly PresentationSchedule visualPresentation = new(.5);
+    private DiagnosticLayout? samplingLayout;
+    private Rectangle samplingBounds;
+    private string lastUnknownReason = "";
+    private string lastHolyExecutionReason = "";
+    private readonly Queue<string> pendingLogDisplay = new();
+    private readonly System.Windows.Forms.Timer logDisplayTimer = new() { Interval = 250 };
+    private readonly CheckBox specialEnabled = new() { Text = "启用特殊点 101", AutoSize = true };
+    private readonly FuryPointSettings furyPoints = new();
+    private readonly ArmsPointSettings armsPoints = new();
+    private readonly RetPointSettings retPoints = new();
+    private readonly TableLayoutPanel retSettings = new() { Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Visible=false };
+    private readonly FlowLayoutPanel retOptions = new() { Dock=DockStyle.Fill,WrapContents=false };
+    private readonly HolyPointSettings holyPoints = new();
+    private readonly TableLayoutPanel holySettings = new() { Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Visible=false };
+    private readonly FlowLayoutPanel holyOptions = new() { Dock=DockStyle.Fill,WrapContents=false };
+    private readonly CheckBox holyRaidMastery = new() { Text="团本自动光环掌握",Name="holyRaidMastery",AutoSize=true,Checked=true,Padding=new Padding(0,3,0,0) };
+    private readonly TableLayoutPanel armsSettings = new() { Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Visible=false };
+    private readonly FlowLayoutPanel armsOptions = new() { Dock=DockStyle.Fill,WrapContents=false };
+    private readonly FlowLayoutPanel legacySettings = new() { Dock=DockStyle.Fill,WrapContents=true };
+    private readonly TableLayoutPanel furySettings = new() { Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,Visible=false };
+    private readonly FlowLayoutPanel furyOptions = new() { Dock=DockStyle.Fill,WrapContents=false };
+    private readonly RowStyle settingsHeight = new(SizeType.Absolute,100);
+    private readonly RowStyle previewHeight = new(SizeType.Absolute,125);
+    private readonly RowStyle logsHeight = new(SizeType.Absolute,155);
+    private readonly ComboBox thunderMode = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 120, Visible = false };
+    private readonly NumericUpDown specialX = new() { Minimum = 0, Maximum = 16000, Value = 610, Width = 70 };
+    private readonly NumericUpDown specialY = new() { Minimum = 0, Maximum = 16000, Value = 8, Width = 60 };
+    private readonly Label specialColor = new() { AutoSize = true, Padding = new Padding(0, 5, 0, 0) };
+    private readonly Label classStatus = new() { Text = "当前职业：等待插件识别", AutoSize = true, ForeColor = Color.DarkGreen, Padding = new Padding(0, 5, 0, 0) };
+    private readonly Button pickSpecial = new() { Text = "截图取点 / 取色", AutoSize = true, Enabled = false };
+    private readonly ProfileLayouts profileLayouts;
+    private ClassIdentity identity;
+    private ClassProfile? activeProfile;
+    private Field[] fields = ClassProfiles.RawFields;
+    private readonly Button saveSpecial = new() { Text = "保存特殊点", AutoSize = true, Enabled = false };
+    private PickedPixel? pendingSpecialPick;
+    private readonly Button pause = new() { Text = "暂停查看", AutoSize = true };
+    private readonly Button locate = new() { Text = "定位测试", AutoSize = true };
+    private readonly Button run = new() { Text = "开启执行（中键）", AutoSize = true };
+    private readonly Label executionStatus = new() { Text = "执行已关闭", AutoSize = true, ForeColor = Color.DarkSlateBlue, Padding = new Padding(0, 5, 0, 0) };
+    private readonly RotationExecution execution;
+    private readonly LoopStatusButton loopStatus = new();
+    private readonly ClassIdentityGate identityGate = new();
+    private bool waitingForIdentity;
+    private readonly ToolTip loopTooltip = new();
+    private readonly FloatingStatusForm floatingWindow;
+    private bool inFloatingMode;
+    private bool minimizeQueued;
+    private FormWindowState expandedWindowState = FormWindowState.Normal;
+    private MouseToggle? mouseToggle;
+    private bool modalOperation;
+    private string exportDirectory;
+    private readonly SavedLogStore savedLogs;
+    private readonly HolyShieldLog holyShieldLog;
+    private readonly RetCombatLog retCombatLog;
+    private bool retLogAnnounced;
+    private string? retLogError;
+    private bool shieldLogAnnounced;
+    private string? shieldLogError;
+    private readonly StableLocator locator = new();
+    private string layoutPath => activeProfile is null ? profileLayouts.DiscoveryPath : profileLayouts.PathFor(activeProfile);
+    private readonly Dictionary<string, string> lastValues = new();
+    private readonly Dictionary<string, string> changedTimes = new();
+    private readonly Queue<string> log = new();
+    private DiagnosticLayout? layout;
+    private Captured? captured;
+    private DiagnosticLayout? capturedLayout;
+    private DateTime capturedAt;
+    private bool frozen;
+    private bool updatingControls;
+    private bool locating;
+    private double lastLocateScan = -10;
+    private bool locationVerified;
+    private string previousStatus = "";
+
+    public DiagnosticForm(bool listenForMouse = true, SavedLogStore? savedLogs = null, ProfileLayouts? profileLayouts = null,
+        RotationExecution? execution = null)
+    {
+        this.savedLogs = savedLogs ?? new SavedLogStore(AppContext.BaseDirectory);
+        holyShieldLog=new HolyShieldLog(this.savedLogs, "forever-capture");
+        retCombatLog=new RetCombatLog(this.savedLogs);
+        this.profileLayouts = profileLayouts ?? new ProfileLayouts(AppContext.BaseDirectory);
+        this.execution = execution ?? new RotationExecution();
+        var floatingSettings = new FloatingWindowSettings(Path.GetDirectoryName(this.profileLayouts.DiscoveryPath)!);
+        floatingWindow = new FloatingStatusForm(floatingSettings);
+        floatingWindow.ExpandRequested += ExpandFromFloating;
+        floatingWindow.PersistenceError += message => SetStatus(message);
+        this.execution.EnabledChanged += SyncLoopStatus;
+        this.execution.StateChanged += RecordExecutionState;
+        SyncLoopStatus();
+        exportDirectory = this.savedLogs.LastDirectory;
+        Text = "RotationForever · 职业执行与点位诊断";
+        Font = new Font("Microsoft YaHei UI", 9);
+        changes.FontChanged += (_, _) => UpdateLogWidth();
+        ClientSize = new Size(1180, 800); MinimumSize = new Size(950, 650);
+        StartPosition = FormStartPosition.Manual;
+        var area = Screen.PrimaryScreen?.WorkingArea ?? new Rectangle(0, 0, 1920, 1080);
+        Location = new Point(Math.Max(area.Left, area.Left + (area.Width - Width) / 2), area.Top + 170);
+        TopMost = true;
+        var content = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, Padding = new Padding(10) };
+        content.RowStyles.Add(new(SizeType.Absolute, 128));
+        content.RowStyles.Add(new(SizeType.Absolute, 52));
+        content.RowStyles.Add(new(SizeType.Percent, 100));
+        content.RowStyles.Add(logsHeight);
+        Controls.Add(content);
+        var tabs=new TabControl {Dock=DockStyle.Fill,Name="diagnosticTabs"};
+        var details=new TabPage("点位与设置");
+        var partyPage=new TabPage("小队资料") {Name="partyRosterPage"};
+        partyPage.Controls.Add(partyPanel);
+        tabs.TabPages.Add(details);tabs.TabPages.Add(partyPage);
+        var detailContent=new TableLayoutPanel {Dock=DockStyle.Fill,ColumnCount=1,RowCount=3};
+        detailContent.RowStyles.Add(settingsHeight);detailContent.RowStyles.Add(previewHeight);
+        detailContent.RowStyles.Add(new(SizeType.Percent,100));
+        details.Controls.Add(detailContent);content.Controls.Add(tabs,0,2);
+        var toolbar = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = true };
+        loopStatus.Click += (_, _) => CollapseToFloating(); toolbar.Controls.Add(loopStatus);
+        toolbar.Controls.Add(games);
+        toolbar.Controls.Add(Button("刷新游戏", RefreshGames));
+        locate.Click += (_, _) => ToggleLocator(); toolbar.Controls.Add(locate);
+        pause.Click += (_, _) => TogglePause(); toolbar.Controls.Add(pause);
+        run.Click += (_, _) => ToggleExecution(); toolbar.Controls.Add(run);
+        toolbar.Controls.Add(Button("保存截图与日志", Export));
+        toolbar.Controls.Add(Button("清空窗口日志", ClearCurrentLog));
+        toolbar.Controls.Add(Button("清空已保存日志", ClearSavedLogs));
+        var top = new CheckBox { Text = "置顶", Checked = true, AutoSize = true, Padding = new Padding(0, 5, 0, 0) };
+        top.CheckedChanged += (_, _) => TopMost = top.Checked; toolbar.Controls.Add(top);
+        toolbar.Controls.Add(classStatus);
+        content.Controls.Add(toolbar, 0, 0);
+        var instructions = new Label { Dock = DockStyle.Fill, Text = "定位：游戏 /hiji locate on → 外部点击定位测试 → 查看逐点校验；分辨率或 UI 缩放变化后自动重新定位。\n通过后：游戏 /hiji locate off → 外部退出定位测试，查看当前专精数据。窗口避开顶部色条；首次更新插件需 /reload。", AutoEllipsis = true };
+        content.Controls.Add(instructions, 0, 1);
+        var settings = legacySettings;
+        thunderMode.Items.AddRange(new[] { "仅有无", "精确层数接口" }); thunderMode.SelectedIndex = 0;
+        thunderMode.SelectedIndexChanged += (_, _) =>
+        {
+            if (updatingControls || layout is null || activeProfile?.SpecId != 72) return;
+            StopExecution("修改雷霆模式"); var updated = layout.Copy(); updated.ThunderMode = thunderMode.SelectedIndex == 1 ? "exact-stacks" : "presence-only";
+            this.profileLayouts.Save(activeProfile!, updated); layout = updated; samplingLayout = null; lastValues.Clear();
+            AddLog("雷霆轰击模式：" + updated.ThunderMode + "；特殊点只判断有无，精确模式需验证层数接口。");
+        };
+        settings.Controls.Add(specialEnabled); settings.Controls.Add(new Label { Text = "X", AutoSize = true, Padding = new Padding(0, 5, 0, 0) }); settings.Controls.Add(specialX);
+        settings.Controls.Add(new Label { Text = "Y", AutoSize = true, Padding = new Padding(0, 5, 0, 0) }); settings.Controls.Add(specialY);
+        pickSpecial.Click += (_, _) => PickSpecial(); settings.Controls.Add(pickSpecial);
+        saveSpecial.Click += (_, _) => SaveSpecial(); settings.Controls.Add(saveSpecial);
+        specialX.ValueChanged += (_, _) => InvalidateSpecialPick();
+        specialY.ValueChanged += (_, _) => InvalidateSpecialPick();
+        settings.Controls.Add(executionStatus);
+        settings.SetFlowBreak(executionStatus, true);
+        specialColor.Text = "无视苦痛：纯黑或等于取色 RGB 时需要施放；尚未取色。";
+        settings.Controls.Add(specialColor);
+        furyPoints.PickRequested+=key=>PickSpecial(key);
+        furyPoints.SaveRequested+=key=>SaveSpecial(key);
+        furyPoints.DisableRequested+=key=>
+        {
+            if(layout is null || activeProfile?.SpecId!=72) return;
+            StopExecution("停用／修改特殊点");var updated=layout.Copy();
+            if(updated.SpecialPoints.TryGetValue(key,out var point)) point.Enabled=false;
+            SaveSpecialLayout(updated,key);
+        };
+        retPoints.PickRequested+=key=>PickSpecial(key);
+        retPoints.SaveRequested+=key=>SaveSpecial(key);
+        retPoints.DisableRequested+=key=> {
+            if(layout is null || activeProfile?.SpecId!=70) return;
+            StopExecution("停用／修改特殊点");var updated=layout.Copy();
+            if(updated.SpecialPoints.TryGetValue(key,out var point)) point.Enabled=false;
+            SaveSpecialLayout(updated,key);
+        };
+        retSettings.RowStyles.Add(new(SizeType.Absolute,240));
+        retSettings.RowStyles.Add(new(SizeType.Percent,100));
+        retSettings.Controls.Add(retPoints,0,0);retSettings.Controls.Add(retOptions,0,1);
+        armsPoints.PickRequested+=key=>PickSpecial(key);
+        armsPoints.SaveRequested+=key=>SaveSpecial(key);
+        armsPoints.DisableRequested+=key=>
+        {
+            if(layout is null || activeProfile?.SpecId!=71) return;
+            StopExecution("停用／修改特殊点");var updated=layout.Copy();
+            if(updated.SpecialPoints.TryGetValue(key,out var point)) point.Enabled=false;
+            SaveSpecialLayout(updated,key);
+        };
+        armsSettings.RowStyles.Add(new(SizeType.Absolute,240));
+        holyPoints.PickRequested+=key=>PickSpecial(key);
+        loopTooltip.SetToolTip(holyPoints.Rows["holy_purpose"].Rule,
+            "默认按临期颜色识别：黑=无Buff，指定非黑色=临期，其他非黑色=存在。请采集临期参考色；固定状态源建议剩余≤3秒变色。");
+        holyPoints.SaveRequested+=key=>SaveSpecial(key);
+        holyPoints.DisableRequested+=key=>
+        {
+            if(layout is null || activeProfile?.SpecId!=65) return;
+            StopExecution("停用／修改特殊点");var updated=layout.Copy();
+            if(updated.SpecialPoints.TryGetValue(key,out var point)) point.Enabled=false;
+            SaveSpecialLayout(updated,key);
+        };
+        holySettings.RowStyles.Add(new(SizeType.Percent,100));
+        holySettings.RowStyles.Add(new(SizeType.Absolute,38));
+        holySettings.Controls.Add(holyPoints,0,0);holySettings.Controls.Add(holyOptions,0,1);
+        holyOptions.Controls.Add(holyRaidMastery);
+        loopTooltip.SetToolTip(holyRaidMastery,"默认开启。关闭后团本光环掌握由你手动释放；小队不受此开关影响。按当前已确认的天堂回响天赋判断严重群伤、持续恶化或群体危急。");
+        holyRaidMastery.CheckedChanged+=(_,_)=>
+        {
+            if(updatingControls||layout is null||activeProfile?.SpecId!=65) return;
+            var previous=layout;var updated=previous.Copy();
+            updated.HolyThresholds=updated.HolyThresholds with{RaidAutoAuraMastery=holyRaidMastery.Checked};
+            try {
+                this.profileLayouts.Save(activeProfile,updated);layout=updated;
+                samplingLayout=null;ResetPresentation();lastHolyExecutionReason="";
+                AddLog("团本自动光环掌握："+(holyRaidMastery.Checked?"开启":"关闭（手动释放）")+"；已保存");
+            } catch(Exception e) {
+                updatingControls=true;holyRaidMastery.Checked=previous.HolyThresholds.RaidAutoAuraMastery;updatingControls=false;
+                SetStatus("无法保存光环掌握开关："+e.Message);
+            }
+        };
+        armsSettings.RowStyles.Add(new(SizeType.Percent,100));
+        armsSettings.Controls.Add(armsPoints,0,0);
+        armsSettings.Controls.Add(armsOptions,0,1);
+        furySettings.RowStyles.Add(new(SizeType.Absolute,180));
+        furySettings.RowStyles.Add(new(SizeType.Percent,100));
+        furySettings.Controls.Add(furyPoints,0,0);
+        furyOptions.Controls.Add(new Label {Text="雷霆模式",AutoSize=true,Padding=new Padding(0,5,0,0)});
+        furyOptions.Controls.Add(thunderMode);
+        furySettings.Controls.Add(furyOptions,0,1);
+        var settingsHost=new Panel {Dock=DockStyle.Fill};
+        settingsHost.Controls.Add(retSettings);settingsHost.Controls.Add(settings);settingsHost.Controls.Add(furySettings);settingsHost.Controls.Add(armsSettings);settingsHost.Controls.Add(holySettings);
+        detailContent.Controls.Add(settingsHost, 0, 0);
+        preview.Dock = DockStyle.Fill;
+        preview.BackColor = Color.FromArgb(245, 247, 250);
+        detailContent.Controls.Add(preview, 0, 1);
+        string[] headings = { "点位", "职业字段", "客户区坐标", "颜色", "原始 RGB", "解码 / 旧规则判断", "最近变化" };
+        grid.Name="pointGrid";
+        foreach (var title in headings) grid.Columns.Add(title, title);
+        grid.Columns[0].FillWeight = 35; grid.Columns[1].FillWeight = 150; grid.Columns[2].FillWeight = 80;
+        grid.Columns[3].FillWeight = 35; grid.Columns[4].FillWeight = 90; grid.Columns[5].FillWeight = 220; grid.Columns[6].FillWeight = 85;
+        grid.RowTemplate.Height = 25;
+        RestoreLiveRows();
+        grid.CurrentCellChanged += (_, _) => { preview.Selected = grid.CurrentRow?.Index ?? -1; preview.Invalidate(); };
+        detailContent.Controls.Add(grid, 0, 2);
+        var bottom = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2 };
+        bottom.RowStyles.Add(new(SizeType.Absolute, 38)); bottom.RowStyles.Add(new(SizeType.Percent, 100));
+        bottom.Controls.Add(status, 0, 0); bottom.Controls.Add(changes, 0, 1); content.Controls.Add(bottom, 0, 3);
+        games.SelectedIndexChanged += (_, _) => { InvalidateSpecialPick(); StopExecution("游戏窗口选择变化"); identity = default;identityGate.Reset();waitingForIdentity=false; activeProfile = null; fields = ClassProfiles.RawFields; classStatus.Text = "当前职业：等待插件识别"; if (!locating) RestoreLiveRows(); ApplyControls(); heartbeat.Reset(); locator.Reset(); locationVerified = false; lastValues.Clear(); SetUnknown("游戏窗口已切换，等待有效采样"); };
+        timer.Tick += (_, _) => TickCapture();
+        logDisplayTimer.Tick += (_, _) => { if (Visible && !inFloatingMode) FlushLogDisplay(); };
+        logDisplayTimer.Start();
+        Shown += (_, _) =>
+        {
+            LoadLayout(); RefreshGames(); timer.Start();
+            if (this.savedLogs.LoadError is not null) AddLog(this.savedLogs.LoadError);
+            if (floatingSettings.LoadError is not null) AddLog(floatingSettings.LoadError);
+            if (listenForMouse)
+            {
+                try
+                {
+                    mouseToggle = new MouseToggle(source =>
+                    {
+                        if (!IsDisposed && IsHandleCreated && !modalOperation)
+                            BeginInvoke((Action)(() => { if (!IsDisposed && !modalOperation) ToggleExecution(source); }));
+                    });
+                }
+                catch (Exception e) { SetStatus(e.Message); }
+            }
+        };
+    }
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            execution.EnabledChanged -= SyncLoopStatus;
+            execution.StateChanged -= RecordExecutionState;
+            floatingWindow.Dispose(); loopTooltip.Dispose();
+            if(execution.Enabled) RecordExecutionState(false,"程序窗口关闭／释放");
+            execution.Stop("程序窗口关闭／释放"); mouseToggle?.Dispose(); mouseToggle = null;
+            timer.Stop(); timer.Dispose(); captureBuffer.Dispose();
+            logDisplayTimer.Stop(); logDisplayTimer.Dispose();
+            preview.Source = null; captured?.Dispose(); captured = null;
+        }
+        base.Dispose(disposing);
+    }
+    private void ResetPresentation()
+    {
+        presentation.Reset(); visualPresentation.Reset();
+    }
+    private void SyncLoopStatus()
+    {
+        loopStatus.LoopEnabled = execution.Enabled;
+        floatingWindow.SetLoopEnabled(execution.Enabled);
+        loopTooltip.SetToolTip(loopStatus, (execution.Enabled ? "循环已激活" : "循环已关闭") + " · 点击收起为悬浮按钮");
+        run.Text = execution.Enabled ? "关闭执行（中键）" : "开启执行（中键）";
+        if (!execution.Enabled) executionStatus.Text = "执行已关闭";
+        timer.Interval = execution.Enabled ? 30 : 100;
+        ResetPresentation();
+    }
+
+    internal void CollapseToFloating()
+    {
+        if (inFloatingMode || modalOperation || !IsHandleCreated) return;
+        var screen = Screen.FromControl(this);
+        if (WindowState != FormWindowState.Minimized) expandedWindowState = WindowState;
+        inFloatingMode = true;
+        Hide();
+        if (WindowState == FormWindowState.Minimized) WindowState = expandedWindowState;
+        floatingWindow.ShowFloating(screen);
+    }
+
+    internal void ExpandFromFloating()
+    {
+        if (!inFloatingMode || IsDisposed) return;
+        inFloatingMode = false;
+        floatingWindow.Hide();
+        ResetPresentation(); lastUnknownReason = "";
+        if (WindowState == FormWindowState.Minimized) WindowState = expandedWindowState;
+        var restoreState = expandedWindowState;
+        Show();
+        FlushLogDisplay();
+        // A hidden window can retain native minimized placement even when its managed state is normal.
+        WindowState = restoreState;
+        Activate();
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == 0x0112 && (m.WParam.ToInt64() & 0xFFF0) == 0xF020 && floatingWindow is not null)
+        { CollapseToFloating(); return; } // WM_SYSCOMMAND / SC_MINIMIZE
+        base.WndProc(ref m);
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        if (floatingWindow is null || inFloatingMode) return;
+        if (WindowState == FormWindowState.Minimized && !minimizeQueued && IsHandleCreated)
+        {
+            // Restore only after the native minimize has finished updating its bounds/state.
+            minimizeQueued = true;
+            BeginInvoke((Action)(() =>
+            {
+                minimizeQueued = false;
+                if (!IsDisposed && WindowState == FormWindowState.Minimized) CollapseToFloating();
+            }));
+        }
+        else if (WindowState != FormWindowState.Minimized) expandedWindowState = WindowState;
+    }
+    private static Button Button(string label, Action action)
+    {
+        var button = new Button { Text = label, AutoSize = true };
+        button.Click += (_, _) => action(); return button;
+    }
+    private GameWindow SelectedGame => games.SelectedItem as GameWindow ?? throw new InvalidOperationException("未找到游戏窗口，请启动 Wow.exe 后刷新游戏列表。");
+    private Rectangle OwnBounds => floatingWindow.Visible ? floatingWindow.Bounds
+        : Visible && WindowState != FormWindowState.Minimized ? Bounds : Rectangle.Empty;
+    private void AvoidFloatingCapture(GameWindow game, Rectangle region, Size size)
+    {
+        if (floatingWindow.Visible)
+            floatingWindow.AvoidCapture(GameCapture.ScreenRegion(game, region, Rectangle.Empty, size));
+    }
+    private void RefreshGames()
+    {
+        int? old = (games.SelectedItem as GameWindow)?.Pid;
+        games.Items.Clear(); games.Items.AddRange(GameCapture.ForeverWindows());
+        if (games.Items.Count > 0)
+        {
+            int found = Enumerable.Range(0, games.Items.Count).FirstOrDefault(i => (games.Items[i] as GameWindow)?.Pid == old, -1);
+            if (found >= 0 || games.Items.Count == 1) games.SelectedIndex = found >= 0 ? found : 0;
+            else SetUnknown("发现多个游戏窗口，请选择目标窗口。");
+        }
+        else SetUnknown("未找到 _forever_ 下的 Wow.exe；可以先启动永恒客户端，再刷新。");
+    }
+    private void LoadLayout()
+    {
+        if (!File.Exists(profileLayouts.DiscoveryPath)) return;
+        try
+        {
+            var saved = DiagnosticLayout.Load(profileLayouts.DiscoveryPath);
+            if (!saved.CurrentProtocol || saved.MarkerLayout != MarkerLayouts.Wide)
+            { AddLog("已停用旧版定位坐标。所有职业使用统一右侧布局，请 /reload 后重新定位。"); return; }
+            layout = saved; ApplyControls(); AddLog("已载入统一右侧定位坐标，等待识别当前职业。");
+        }
+        catch (Exception e) { SetUnknown(e.Message); }
+    }
+    private void ApplyControls(string? committedFuryKey=null)
+    {
+        pendingSpecialPick = null; saveSpecial.Enabled = false;
+        bool special = activeProfile?.HasSpecial == true;
+        specialEnabled.Enabled = specialX.Enabled = specialY.Enabled = pickSpecial.Enabled = special;
+        bool fury = activeProfile?.SpecId == 72;
+        bool arms = activeProfile?.SpecId == 71;
+        bool ret = activeProfile?.SpecId == 70;
+        bool holy = activeProfile?.SpecId == 65;
+        furySettings.Visible=fury;armsSettings.Visible=arms;holySettings.Visible=holy;retSettings.Visible=ret;legacySettings.Visible=!fury&&!arms&&!holy&&!ret;thunderMode.Visible=fury;
+        settingsHeight.Height=ret?278:holy?258:arms?278:fury?218:100;previewHeight.Height=fury||arms||holy||ret?60:125;logsHeight.Height=fury||arms||holy||ret?110:155;
+        Control executionParent=ret?retOptions:holy?holyOptions:arms?armsOptions:fury?furyOptions:legacySettings;
+        if(executionStatus.Parent!=executionParent) executionParent.Controls.Add(executionStatus);
+        furyPoints.LoadSettings(fury?layout:null,committedFuryKey);
+        armsPoints.LoadSettings(arms?layout:null,committedFuryKey);
+        retPoints.LoadSettings(ret?layout:null,committedFuryKey);
+        holyPoints.LoadSettings(holy?layout:null,committedFuryKey);
+        holyRaidMastery.Enabled=holy&&layout is not null;
+        if (layout is null) return;
+        updatingControls = true;
+        specialEnabled.Text = "启用特殊点 101";
+        specialEnabled.Checked = layout.SpecialEnabled;
+        specialX.Value = Math.Min(specialX.Maximum, layout.Special.X); specialY.Value = Math.Min(specialY.Maximum, layout.Special.Y);
+        thunderMode.SelectedIndex = layout.ThunderMode == "exact-stacks" ? 1 : 0;
+        holyRaidMastery.Checked=layout.HolyThresholds.RaidAutoAuraMastery;
+        specialColor.Text = activeProfile?.SpecId == RotationForever.ForeverPaladin.ProfileId
+            ? "7 正义圣印 · 8 审判 · F11 神圣打击；观察点仅用于诊断。"
+            : !special ? "当前专精不使用特殊点。" : activeProfile?.SpecId == 581
+            ? $"复仇特殊点：沿用非黑判断；取色 RGB：{layout.SpecialReferenceColor?.ToString() ?? "未采集"}。"
+            : $"无视苦痛：纯黑或等于取色 RGB 时需要施放；取色 RGB：{layout.SpecialReferenceColor?.ToString() ?? "未采集（只判断纯黑）"}。";
+        updatingControls = false;
+    }
+    private bool SelectClass(ClassIdentity next, DiagnosticLayout geometry, bool force = false)
+    {
+        if (!force && identity == next) return false;
+        StopExecution($"确认职业／专精切换：{identity.SpecId}/{identity.ClassId} → {next.SpecId}/{next.ClassId}");
+        ResetPartyRoster();
+        InvalidateSpecialPick(); heartbeat.Reset();identityGate.Reset();
+        var profile = ClassProfiles.Find(next.SpecId);
+        if (profile?.ClassId != next.ClassId) profile = null;
+        var selectedLayout = profile is null ? geometry.Copy() : profileLayouts.Load(profile, geometry);
+        if (profile is null) { selectedLayout.SpecialEnabled = false; selectedLayout.SpecialReferenceColor = null; selectedLayout.SpecialPoints.Clear(); selectedLayout.SpecId = next.SpecId; }
+        else profileLayouts.Save(profile, selectedLayout);
+        identity = next; activeProfile = profile; layout = selectedLayout; samplingLayout = null;
+        fields = profile?.Fields ?? ClassProfiles.RawFields;
+        classStatus.Text = $"当前职业：{next.DisplayName}" + (profile is null ? "" : $" · 配置 {profile.Key}.json");
+        ApplyControls(); lastValues.Clear(); changedTimes.Clear();
+        if (!locating) RestoreLiveRows();
+        AddLog($"已切换 {next.DisplayName}；{(profile is null ? "显示原始颜色" : "配置 " + layoutPath)}；执行已关闭。");
+        return true;
+    }
+    private void PreserveSpecial(DiagnosticLayout found)
+    {
+        if (layout is null) return;
+        found.Special = layout.Special;
+        found.SpecId = layout.SpecId;
+        found.SpecialReferenceColor = layout.SpecialReferenceColor;
+        // External point 101 cannot be inferred when game size or UI scale changes.
+        bool compatible = PositionVerification.CompatibleSpecialGeometry(found, layout);
+        found.SpecialEnabled = layout.SpecialEnabled && compatible;
+        found.SpecialPoints = layout.SpecialPoints.ToDictionary(p => p.Key, p => p.Value.Copy());
+        found.ThunderMode = layout.ThunderMode;
+        if (!compatible)
+        {
+            found.SpecialReferenceColor = null;
+            foreach (var point in found.SpecialPoints.Values)
+            { point.Enabled = false; point.ReferenceColor = null; }
+        }
+        if (layout.SpecialEnabled && !found.SpecialEnabled) AddLog("标准点位已变化，特殊点 101 已停用，请单独重新确认坐标。");
+    }
+    private void RestoreLiveRows()
+    {
+        ResetPresentation(); lastUnknownReason = "";
+        grid.Rows.Clear(); grid.Columns[1].HeaderText = "职业字段"; grid.Columns[5].HeaderText = "解码 / 旧规则判断"; grid.Columns[6].HeaderText = "最近变化";
+        foreach (var field in fields) grid.Rows.Add(field.Id, field.Name, "—", "", "—", "等待有效数据", "—");
+        preview.LocationMode = false;
+        preview.LiveFields = fields;
+    }
+    private void ToggleLocator()
+    {
+        if (locating)
+        {
+            locating = false; locate.Text = "定位测试"; RestoreLiveRows(); heartbeat.Reset(); lastValues.Clear();
+            SetUnknown("已退出定位测试。游戏输入 /hiji locate off 恢复真实数据。");
+        }
+        else BeginLocator("定位测试：游戏输入 /hiji locate on，工具将自动寻找两行色块并保存稳定坐标。");
+    }
+    private void BeginLocator(string reason)
+    {
+        InvalidateSpecialPick();
+        StopExecution("进入定位测试");
+        locating = true; locate.Text = "退出定位测试"; frozen = false; pause.Text = "暂停查看";
+        locator.Reset(); locationVerified = false; lastLocateScan = -10; heartbeat.Reset();
+        grid.Rows.Clear(); grid.Columns[1].HeaderText = "定位测试点"; grid.Columns[5].HeaderText = "预期颜色 / 校验结果"; grid.Columns[6].HeaderText = "校验时间";
+        preview.LocationMode = true; SetUnknown(reason);
+    }
+    private Captured ReadScan(GameWindow game, Size size)
+    {
+        var region = new Rectangle(0, 0, size.Width, Math.Min(128, size.Height));
+        AvoidFloatingCapture(game, region, size);
+        return GameCapture.Read(game, region, OwnBounds);
+    }
+    private void TickLocator()
+    {
+        if (clock.Elapsed.TotalSeconds - lastLocateScan < .5) return;
+        lastLocateScan = clock.Elapsed.TotalSeconds;
+        try
+        {
+            var game = SelectedGame; var size = GameCapture.ClientSize(game);
+            using var scan = ReadScan(game, size);
+            DiagnosticLayout found;
+            try { found = Calibration.Find(scan.Image, size); }
+            catch (InvalidDataException e) when (layout is not null && size.Width == layout.ClientWidth && size.Height == layout.ClientHeight)
+            {
+                // Keep failing points visible while waiting for a complete pattern.
+                ShowPositionChecks(layout, scan, PositionVerification.Check(layout, scan.At));
+                locator.Reset(); locationVerified = false;
+                SetStatus("定位图案不完整，已按旧坐标标出失败点：" + e.Message);
+                return;
+            }
+            var checks = PositionVerification.Check(found, scan.At);
+            if (checks.Any(c => !c.Passed)) throw new InvalidDataException("定位色块校验失败，请确认测试模式及色条可见性。");
+            bool stable = locator.Observe(found);
+            var nextIdentity = ClassProfiles.Identify(scan.At(found.Markers[1]));
+            if (stable && (layout is null || !PositionVerification.SameGeometry(layout, found) || identity != nextIdentity))
+            {
+                PreserveSpecial(found); SelectClass(nextIdentity, found, force: true); profileLayouts.SaveGeometry(layout!);
+                AddLog($"重新定位并保存：{size.Width}×{size.Height}，第一点 ({found.Frames[0].X}, {found.Frames[0].Y})，第二行 Y={found.Bars[0].Y}。");
+            }
+            ShowPositionChecks(found, scan, checks);
+            string message = stable ? $"定位校验通过 203/203 · 坐标已保存 · {size.Width}×{size.Height} · 持续监测分辨率和 UI 缩放" : "色块校验通过 203/203 · 等待第二次位置一致后保存";
+            if (stable && !locationVerified) AddLog(message);
+            locationVerified = stable; SetStatus(message, false);
+        }
+        catch (Exception e)
+        {
+            locator.Reset(); locationVerified = false;
+            SetUnknown("定位等待：" + e.Message + " 游戏输入 /hiji locate on。");
+        }
+    }
+    private void ShowPositionChecks(DiagnosticLayout found, Captured scan, PointCheck[] checks)
+    {
+        if (inFloatingMode) return;
+        var displayed = found.Copy(); displayed.SpecialEnabled = false;
+        ReplaceCapture(PositionVerification.Crop(scan, found), displayed);
+        if (grid.Rows.Count != checks.Length)
+        {
+            grid.Rows.Clear();
+            foreach (var check in checks) grid.Rows.Add(check.Id, check.Name, "", "", "", "", "");
+        }
+        for (int index = 0; index < checks.Length; index++)
+        {
+            var check = checks[index]; var row = grid.Rows[index];
+            row.Cells[2].Value = $"{check.Point.X}, {check.Point.Y}";
+            row.Cells[3].Style.BackColor = check.Actual; row.Cells[4].Value = Colors.Rgb(check.Actual);
+            row.Cells[5].Value = $"预期 {check.Expected} · {(check.Passed ? "通过" : "失败")}";
+            row.Cells[6].Value = capturedAt.ToString("HH:mm:ss.fff");
+            row.DefaultCellStyle.BackColor = check.Passed ? Color.FromArgb(232, 246, 239) : Color.MistyRose;
+        }
+    }
+    private void SaveSpecial(string? furyKey=null)
+    {
+        var pending=furyKey is null?pendingSpecialPick:activeProfile?.SpecId==65?holyPoints.Rows[furyKey].Pending:activeProfile?.SpecId==70?retPoints.Rows[furyKey].Pending:activeProfile?.SpecId==71?armsPoints.Rows[furyKey].Pending:furyPoints.Rows[furyKey].Pending;
+        if (updatingControls || modalOperation || pending is not { } selected) return;
+        StopExecution("保存特殊点配置");
+        try
+        {
+            if (layout is null) throw new InvalidOperationException("先校准标准点位，再设置特殊点。");
+            var game = SelectedGame;
+            if (GameCapture.ClientSize(game) != new Size(layout.ClientWidth, layout.ClientHeight))
+                throw new InvalidOperationException("游戏尺寸已变化，请重新定位并取点。");
+            var marker = layout.Markers[1];
+            using var currentIdentity = GameCapture.Read(game, new Rectangle(marker.X, marker.Y, 1, 1), OwnBounds);
+            if (ClassProfiles.Identify(currentIdentity.At(marker)) != identity)
+            {
+                InvalidateSpecialPick();
+                throw new InvalidOperationException("职业 / 专精已变化，请在当前职业重新取点。");
+            }
+            SaveSpecialLayout(furyKey is null?BuildSpecialLayout(selected):activeProfile?.SpecId==65?holyPoints.BuildLayout(layout,furyKey):activeProfile?.SpecId==70?retPoints.BuildLayout(layout,furyKey):activeProfile?.SpecId==71?armsPoints.BuildLayout(layout,furyKey):furyPoints.BuildLayout(layout,furyKey),furyKey);
+        }
+        catch (Exception e) { SetUnknown(e.Message); }
+    }
+    internal DiagnosticLayout BuildSpecialLayout(PickedPixel selected)
+    {
+        if(layout is null) throw new InvalidOperationException("先校准标准点位，再设置特殊点。");
+        var updated=layout.Copy();
+        updated.Special=selected.Point;updated.SpecialReferenceColor=selected.Color;updated.SpecialEnabled=specialEnabled.Checked;
+        return updated;
+    }
+    private void InvalidateSpecialPick()
+    {
+        if (updatingControls) return;
+        pendingSpecialPick = null; saveSpecial.Enabled = false;
+        furyPoints.InvalidatePicks();
+        armsPoints.InvalidatePicks();
+        retPoints.InvalidatePicks();
+        holyPoints.InvalidatePicks();
+        if (layout is not null && activeProfile?.SpecId is not (70 or 71 or 72))
+            specialColor.Text = $"已保存取色 RGB：{layout.SpecialReferenceColor?.ToString() ?? "未采集"}；请截图取点 / 取色后保存。";
+    }
+    internal void StageSpecialPick(PickedPixel selected)
+    {
+        updatingControls = true;
+        try
+        {
+            specialX.Value = selected.Point.X; specialY.Value = selected.Point.Y; specialEnabled.Checked = true;
+        }
+        finally { updatingControls = false; }
+        pendingSpecialPick = selected; saveSpecial.Enabled = true;
+        specialColor.Text = $"待保存：({selected.Point.X}, {selected.Point.Y})，取色 RGB：{selected.Color}；点击保存特殊点后生效。";
+        SetStatus("取点取色完成，尚未写入配置，请点击保存特殊点。");
+    }
+    internal void SaveSpecialLayout(DiagnosticLayout updated,string? furyKey=null)
+    {
+        if (activeProfile is null || !activeProfile.HasSpecial) throw new InvalidOperationException("当前职业没有特殊点配置。");
+        profileLayouts.Save(activeProfile, updated); layout = updated; ApplyControls(furyKey);
+        samplingLayout = null; ResetPresentation();
+        AddLog(activeProfile.SpecId == 70 ? $"已保存惩戒特殊点：{(furyKey is null?"惩戒光环":RetBuffs.Label(furyKey))} · {layoutPath}" : activeProfile.SpecId == 65 ? $"已保存神圣配置：{(furyKey is null?"治疗设置":HolyBuffs.Label(furyKey))} · {layoutPath}" : activeProfile.SpecId == 71 ? $"已保存武器特殊点：{(furyKey is null ? "武器光环" : ArmsBuffs.Label(furyKey))} · {layoutPath}" : activeProfile.SpecId == 72 ? $"已保存 {(furyKey is null?"狂暴特殊点":FuryBuffs.Label(furyKey))} · {layout.ThunderMode} · {layoutPath}" : $"{activeProfile.DisplayName}特殊点 101：({updated.Special.X}, {updated.Special.Y})，取色 RGB {updated.SpecialReferenceColor?.ToString() ?? "未采集"}，{(updated.SpecialEnabled ? "启用" : "停用")}；已保存 {layoutPath}");
+        lastValues.Clear(); changedTimes.Clear();
+        frozen = false; pause.Text = "暂停查看"; heartbeat.Reset();
+    }
+    private async void PickSpecial(string? furyKey=null)
+    {
+        if (modalOperation) return;
+        if(furyKey is null) InvalidateSpecialPick(); else if(activeProfile?.SpecId==65) holyPoints.InvalidatePick(furyKey); else if(activeProfile?.SpecId==70) retPoints.InvalidatePick(furyKey); else if(activeProfile?.SpecId==71) armsPoints.InvalidatePick(furyKey); else furyPoints.InvalidatePick(furyKey);
+        StopExecution("开始取点");
+        modalOperation = true; timer.Stop();
+        try
+        {
+            if (locating) throw new InvalidOperationException("先退出定位测试，并在游戏输入 /hiji locate off，再选取实际图标。");
+            if (layout is null || activeProfile?.HasSpecial != true) throw new InvalidOperationException("先定位并识别支持特殊点的职业，再截图取点。");
+            var game = SelectedGame; var size = GameCapture.ClientSize(game);
+            if (size.Width != layout.ClientWidth || size.Height != layout.ClientHeight)
+                throw new InvalidOperationException("游戏尺寸已变化，请先重新校准。");
+            var bounds = GameCapture.ScreenRegion(game, new Rectangle(Point.Empty, size), Rectangle.Empty);
+            Hide(); GameCapture.Activate(game);
+            await System.Threading.Tasks.Task.Delay(250);
+            if (IsDisposed) return;
+            if (global::Program.GetForegroundWindow() != game.Handle)
+                throw new InvalidOperationException("游戏未处于前台，无法取点，请重试。");
+            using var screenshot = GameCapture.Read(game, new Rectangle(Point.Empty, size), Rectangle.Empty);
+            if (ClassProfiles.Identify(screenshot.At(layout.Markers[1])) != identity)
+                throw new InvalidOperationException("职业 / 专精已变化，请等待识别后重新取点。");
+            using var picker = new SpecialPointPicker(screenshot.Image, bounds, activeProfile.DisplayName,
+                furyKey is not null && activeProfile.SpecId == 70 ? $"{RetBuffs.Identity(furyKey,RetBuffs.IsRadiant(layout,screenshot.At))}；{RetBuffs.Rule(furyKey)}" : furyKey is not null && activeProfile.SpecId == 65 ? $"{HolyBuffs.Label(furyKey)}：{HolyBuffs.Rule(furyKey,HolyBuffs.ExpiryMode(furyKey,layout.SpecialPoints.GetValueOrDefault(furyKey)))}；选择稳定的状态指示区域，避开图标边缘" : furyKey is not null && activeProfile.SpecId == 71 ? $"{ArmsBuffs.Label(furyKey)}：{ArmsBuffs.Rule(furyKey)}；请采集指定状态的参考色" : furyKey is not null ? $"{FuryBuffs.Label(furyKey)}："+(FuryBuffs.UsesTimeColor(furyKey)?"请在临近结束时取非黑参考色；纯黑=缺失":"纯黑=缺失；任何非黑=存在；所取颜色仅记录") : activeProfile.SpecId == 73 ? "纯黑或等于取色 RGB 时，判定需要施放" : activeProfile.SpecId == RotationForever.ForeverPaladin.ProfileId ? "选择需要诊断的像素，只记录坐标与RGB，供观察使用" : "沿用原复仇代码的非黑像素判断");
+            if (picker.ShowDialog() != DialogResult.OK || picker.Selection is not { } selected) return;
+            if (GameCapture.ClientSize(game) != size)
+                throw new InvalidOperationException("选点过程中游戏尺寸变化，请重新选取。");
+            if(furyKey is null) StageSpecialPick(selected);
+            else if(activeProfile.SpecId==65) { holyPoints.Stage(furyKey,selected);SetStatus(HolyBuffs.Label(furyKey)+"取点完成，请点击该行的保存。"); }
+            else if(activeProfile.SpecId==70) { retPoints.Stage(furyKey,selected);SetStatus(RetBuffs.Label(furyKey)+"取点完成，请点击该行保存。"); }
+            else if(activeProfile.SpecId==71) { armsPoints.Stage(furyKey,selected);SetStatus(ArmsBuffs.Label(furyKey)+"取点完成，请点击该行的保存。"); }
+            else { furyPoints.Stage(furyKey,selected);SetStatus(FuryBuffs.Label(furyKey)+"取点完成，请点击该行的保存。"); }
+        }
+        catch (Exception e) { if (!IsDisposed) SetStatus("取点失败：" + e.Message); }
+        finally
+        {
+            modalOperation = false;
+            if (!IsDisposed) { Show(); Activate(); timer.Start(); heartbeat.Reset(); }
+        }
+    }
+    private void TogglePause()
+    {
+        StopExecution("用户暂停／继续查看采样");
+        frozen = !frozen; pause.Text = frozen ? "继续采样" : "暂停查看";
+        if (frozen) { ResetPartyRoster("已暂停采样：小队资料和实时能量已清除"); SetStatus($"已暂停查看 · 最后采样 {capturedAt:HH:mm:ss.fff}"); }
+        else { heartbeat.Reset(); TickCapture(); }
+    }
+    private void ToggleExecution(string source="执行按钮")
+    {
+        if (modalOperation) return;
+        if (execution.Enabled) { StopExecution("用户关闭："+source); AddLog("执行已关闭："+source); return; }
+        try
+        {
+            if (locating) throw new InvalidOperationException("先退出定位测试，并在游戏输入 /hiji locate off。");
+            if (layout is null) throw new InvalidOperationException("先完成点位校准，再开启执行。");
+            if (activeProfile is null) throw new InvalidOperationException("当前职业尚未识别，或没有对应执行代码。");
+            if (activeProfile.SpecId != RotationForever.ForeverPaladin.ProfileId)
+                throw new InvalidOperationException("当前永恒版本仅启用圣骑士战斗逻辑。");
+            if (activeProfile.SpecId == 581 && !layout.SpecialEnabled) throw new InvalidOperationException("先设置复仇专精的特殊判断点。");
+            var size = GameCapture.ClientSize(SelectedGame);
+            if (size.Width != layout.ClientWidth || size.Height != layout.ClientHeight)
+                throw new InvalidOperationException("游戏尺寸已变化，请重新定位后开启执行。");
+            frozen = false; pause.Text = "暂停查看"; heartbeat.Reset();
+            execution.Start(activeProfile,"用户开启："+source); timer.Interval = 30;
+            lastHolyExecutionReason = "";
+            ResetPresentation();
+            run.Text = "关闭执行（中键）"; executionStatus.Text = "执行等待有效职业数据 / 心跳";
+            AddLog($"执行已开启：{activeProfile.DisplayName}；使用对应配置、执行代码与原键位。");
+        }
+        catch (Exception e) { SetStatus("无法开启执行：" + e.Message); }
+    }
+    private void StopExecution(string reason="界面操作", [System.Runtime.CompilerServices.CallerMemberName] string caller="")
+    {
+        execution.Stop(reason+"（"+caller+"）"); timer.Interval = 100;
+        ResetPresentation();
+        run.Text = "开启执行（中键）"; executionStatus.Text = "执行已关闭";
+    }
+    private void RecordExecutionState(bool enabled,string reason)
+    {
+        holyShieldLog.RecordControl($"执行状态={(enabled?"开启":"关闭")}；原因={reason}；已选职业={identity.SpecId}/{identity.ClassId}");
+    }
+    private void TickCapture()
+    {
+        if (frozen) return;
+        if (locating) { TickLocator(); return; }
+        try
+        {
+            if (layout is null) { SetUnknown("等待定位：游戏输入 /hiji locate on，再点击定位测试。"); return; }
+            var game = SelectedGame; var size = GameCapture.ClientSize(game);
+            if (size.Width != layout.ClientWidth || size.Height != layout.ClientHeight)
+            {
+                BeginLocator("游戏客户区尺寸已变化，进入定位测试。游戏输入 /hiji locate on 自动重新定位。"); return;
+            }
+            if (!ReferenceEquals(samplingLayout, layout))
+            {
+                samplingBounds = layout.CaptureBounds; samplingLayout = layout;
+                ResetPresentation();
+            }
+            AvoidFloatingCapture(game, samplingBounds, size);
+            var next = captureBuffer.Read(game, samplingBounds, OwnBounds, size);
+            int mode = Colors.Kind(next.At(layout.Markers[0]));
+            var identityColor=next.At(layout.Markers[1]);
+            var nextIdentity = ClassProfiles.Identify(identityColor);
+            bool alive = heartbeat.Observe(next.At(layout.Markers[2]), clock.Elapsed.TotalSeconds);
+            bool accepted=identityGate.Observe(identity,nextIdentity,mode==2&&alive,clock.Elapsed.TotalSeconds);
+            holyShieldLog.RecordCapture(next,layout,accepted,alive,heartbeat.Age(clock.Elapsed.TotalSeconds),
+                global::Program.GetForegroundWindow(),game,execution.Enabled,clock.Elapsed.TotalSeconds);
+            if(!accepted) {
+                string detail=$"职业标记等待恢复／确认；当前={identity.SpecId}/{identity.ClassId}；候选={nextIdentity.SpecId}/{nextIdentity.ClassId}；RGB={identityColor.R},{identityColor.G},{identityColor.B}；模式={mode}；心跳={alive}；激活保留={execution.Enabled}";
+                holyShieldLog.RecordControl(detail);
+                waitingForIdentity=true;
+                CJQ.Inst.Cancel();HOLY.Inst.CancelExecution();
+                executionStatus.Text=execution.Enabled?"执行暂停发送：等待职业标记恢复／确认（激活保留）":"执行已关闭："+execution.LastStopReason;
+                SetStatus(detail);
+                return;
+            }
+            if(waitingForIdentity) {
+                holyShieldLog.RecordControl($"职业标记已恢复／确认：{nextIdentity.SpecId}/{nextIdentity.ClassId}；RGB={identityColor.R},{identityColor.G},{identityColor.B}；激活={execution.Enabled}");
+                waitingForIdentity=false;
+            }
+            if (SelectClass(nextIdentity, layout)) return;
+            bool live = mode == 2 && activeProfile is not null && alive;
+            // Receive metadata even with execution disabled. Never acquire it from combat frames.
+            bool? PartyFlag(int id) => FuryBuffs.Boolean(next.At(layout.Frames[id-1]));
+            int rosterGeneration = partyRoster.Generation;
+            var roster = partyRoster.Observe(id => next.At(layout.Bars[id-1]),
+                live && activeProfile?.SpecId is 65 or RotationForever.ForeverPaladin.ProfileId,
+                PartyFlag(19), PartyFlag(41), PartyFlag(1), clock.Elapsed.TotalSeconds);
+            if (partyRoster.Generation != rosterGeneration) HOLY.Inst.Reset();
+            HOLY.Inst.SetPartyRoster(roster);
+            var power=partyPower.Observe(id=>next.At(layout.Bars[id-1]),roster,clock.Elapsed.TotalSeconds);
+            HOLY.Inst.SetRunicPower(power);
+            if(activeProfile?.SpecId==65) {
+                for(int i=0;i<layout.Frames.Length;i++) healingFrames[i+1]=next.At(layout.Frames[i]);
+                var raidBars=Enumerable.Range(1,49).ToDictionary(i=>i,i=>next.At(layout.Bars[i-1]));
+                HOLY.Inst.ObserveHealing(healingFrames,layout.HolyThresholds,clock.Elapsed.TotalSeconds,live,execution.Enabled,global::Program.GetForegroundWindow()==game.Handle,raidBars,
+                    Colors.Kind(next.At(layout.Markers[2]))==3);
+                if(!live) healingFrames.Clear();
+            }
+            string reason = mode == 4 ? "定位图案" : activeProfile is null ? identity.DisplayName : mode != 2 ? "插件尚未输出 / 需重载 / 坐标不匹配" : !alive ? "心跳等待或超过 1.5 秒未变化" : "";
+            // Execute from the fresh sample before any table, log or preview work.
+            string executionText = activeProfile is null ? "执行已关闭" : execution.Tick(game, layout, next, live, clock.Elapsed.TotalSeconds, activeProfile);
+            if(activeProfile?.SpecId==70) {
+                retCombatLog.Record(next,layout,live,execution.Enabled,executionText);
+                if(retCombatLog.Started&&!retLogAnnounced) {
+                    retLogAnnounced=true;AddLog("惩戒连续诊断日志："+retCombatLog.Path,"ret-trace-path");
+                }
+                if(retCombatLog.Error!=retLogError) {
+                    retLogError=retCombatLog.Error;
+                    AddLog(retLogError is null?"惩戒诊断日志写入已恢复":"惩戒诊断日志写入失败："+retLogError,"ret-trace-error");
+                }
+            }
+            if(activeProfile?.SpecId==65) {
+                RecordPartyDiagnostics(roster,power,id=>next.At(layout.Frames[id-1]),PartyFlag(1),partyRoster.Status,partyPower.Status);
+                RecordHealingDiagnostics(live?HolyBuffs.Read(layout,next.At):new());
+                holyShieldLog.Record(next,layout,live,execution.Enabled,executionText+
+                    (execution.LastInputDetails.Length>0?"；"+execution.LastInputDetails:""),clock.Elapsed.TotalSeconds);
+                if(holyShieldLog.Started&&!shieldLogAnnounced) {
+                    shieldLogAnnounced=true;AddLog("神圣自动诊断日志（含小队／血DK）："+holyShieldLog.Path,"trace-path");
+                }
+                if(holyShieldLog.Error is {} error&&error!=shieldLogError) {
+                    shieldLogError=error;AddLog("神圣诊断日志写入失败："+error,"trace-error");
+                }
+                else if(holyShieldLog.Error is null && shieldLogError is not null) {
+                    shieldLogError=null;AddLog("神圣诊断日志写入已恢复","trace-error");
+                }
+            }
+            // Record changed execution judgments even while the table is hidden.
+            // This reports requests/waits, not successful spell casts.
+            if (execution.Enabled && activeProfile?.SpecId is 65 or RotationForever.ForeverPaladin.ProfileId && executionText != lastHolyExecutionReason) {
+                lastHolyExecutionReason = executionText;
+                AddLog(activeProfile.SpecId == RotationForever.ForeverPaladin.ProfileId
+                    ? "永恒执行判断：" + executionText : "神圣执行判断：" + executionText,"execution-decision");
+                if (activeProfile.SpecId == RotationForever.ForeverPaladin.ProfileId)
+                    holyShieldLog.RecordControl("永恒执行判断：" + executionText);
+            }
+            holyShieldLog.RecordCaptureSucceeded();
+            if (!presentation.Due(clock.Elapsed.TotalSeconds, Visible && !inFloatingMode && WindowState != FormWindowState.Minimized)) return;
+            // Observe/log every presentation sample as before. Only expensive visual
+            // updates run at 2 Hz; neither execution nor file logs use this gate.
+            bool render = visualPresentation.Due(clock.Elapsed.TotalSeconds);
+            UpdateLiveRows(next, live, reason, render);
+            if (!render) return;
+            // The preview/export owns a stable copy; it never triggers another screen capture.
+            ReplaceCapture(new Captured((Bitmap)next.Image.Clone(), next.Bounds));
+            if (partyPanel.Visible) partyPanel.Present(roster,power,slot=>next.At(layout.Frames[49+slot]),PartyFlag(1)==true,
+                activeProfile?.SpecId is 65 or RotationForever.ForeverPaladin.ProfileId
+                    ? partyRoster.Status : "当前职业未输出小队资料",partyPower.Status,layout.HolyThresholds);
+            if (live && activeProfile?.SpecId == 72 && !execution.Enabled)
+            {
+                var f = Enumerable.Range(1, DisplayProtocol.CellCount).ToDictionary(i => i, i => next.At(layout.Frames[i-1]));
+                var b = Enumerable.Range(1, DisplayProtocol.CellCount).ToDictionary(i => i, i => next.At(layout.Bars[i-1]));
+                var decision = KBZ.Decide(f,b,FuryBuffs.Read(layout,next.At));
+                string explanation = $"{decision.Branch} · {decision.Reason} · {(decision.Mode.Length > 0 ? decision.Mode : layout.ThunderMode)} · 鲁莽来源=成功施法计时";
+                if (!execution.Enabled) executionStatus.Text = "诊断（执行关闭）：" + explanation;
+            }
+            if (live && activeProfile?.SpecId == 70 && !execution.Enabled)
+            {
+                var f=Enumerable.Range(1,DisplayProtocol.CellCount).ToDictionary(i=>i,i=>next.At(layout.Frames[i-1]));
+                var b=Enumerable.Range(1,DisplayProtocol.CellCount).ToDictionary(i=>i,i=>next.At(layout.Bars[i-1]));
+                var decision=CJQ.Decide(f,b,RetBuffs.Read(layout,next.At));
+                executionStatus.Text=$"诊断（执行关闭）：{decision.Branch} · {decision.Reason}";
+            }
+            if (live && activeProfile?.SpecId == 71 && !execution.Enabled)
+            {
+                var f = Enumerable.Range(1, DisplayProtocol.CellCount).ToDictionary(i => i, i => next.At(layout.Frames[i-1]));
+                var b = Enumerable.Range(1, DisplayProtocol.CellCount).ToDictionary(i => i, i => next.At(layout.Bars[i-1]));
+                var decision = WQZ.Decide(f,b,ArmsBuffs.Read(layout,next.At));
+                executionStatus.Text = $"诊断（执行关闭）：{decision.Branch} · {decision.Reason}";
+            }
+            if (live && activeProfile?.SpecId == 65 && !execution.Enabled)
+            {
+                var f=Enumerable.Range(1,DisplayProtocol.CellCount).ToDictionary(i=>i,i=>next.At(layout.Frames[i-1]));
+                var target=next.At(layout.Frames[7]);double? targetHp=target.R==target.G&&target.G==target.B?target.R/255.0:null;
+                bool raid=FuryBuffs.Boolean(next.At(layout.Frames[40]))==true;
+                var injury=HolyTriage.Analyze(HolyTriage.HealingFrames(f,HOLY.Inst.Raid.Roster),raid,layout.HolyThresholds);
+                var context=raid?HOLY.Inst.Raid.CooldownContext:HOLY.Inst.CooldownContext;
+                executionStatus.Text="诊断（执行关闭）："+(injury.Major?"群体大掉血 · ":"")+HolyTriage.Single(targetHp,layout.HolyThresholds)+" · "+HOLY.Decide(f,HolyBuffs.Read(layout,next.At),layout.HolyThresholds,context,party:roster,power:power,raidRoster:HOLY.Inst.Raid.Roster,raidHealing:HOLY.Inst.Raid.Sample).Reason;
+            }
+            int charges = next.At(layout.Bars[1]).R == 255 ? 2 : next.At(layout.Bars[0]).R == 255 ? 1 : 0;
+            string extra = activeProfile?.SpecId == 73 ? $" · 盾牌格挡充能 {charges}" : "";
+            SetStatus(live ? $"{identity.DisplayName} · 心跳正常{extra} · {size.Width}×{size.Height} · {capturedAt:HH:mm:ss.fff}" : $"{reason} · 原始画面 {capturedAt:HH:mm:ss.fff}", false);
+            if (execution.Enabled || activeProfile?.SpecId is not (65 or 70 or 71 or 72) || !live) executionStatus.Text = executionText;
+            if (live && activeProfile?.SpecId == RotationForever.ForeverPaladin.ProfileId && !execution.Enabled)
+                executionStatus.Text = "诊断（执行关闭）：" +
+                    RotationForever.ForeverPaladin.Decide(id => next.At(layout.Frames[id - 1])).Reason;
+            if(live&&activeProfile?.SpecId==65&&HOLY.Inst.HealingSample.VirtueActive)
+                executionStatus.Text+=$" · 美德推定窗口 {HOLY.Inst.HealingSample.VirtueRemaining:F1}秒";
+            if(live&&activeProfile?.SpecId==65&&PartyFlag(41)==true) {
+                var raidSample=HOLY.Inst.Raid.Sample;
+                executionStatus.Text+=$" · 团队伤员 {raidSample.Injury.Injured}/4 · 总缺血 {raidSample.Injury.Deficit*100:F1}个百分点";
+                if(raidSample.VirtueActive) executionStatus.Text+=$" · 团队美德推定窗口 {raidSample.VirtueRemaining:F1}秒";
+            }
+        }
+        catch (Exception e)
+        {
+            heartbeat.Reset();
+            holyShieldLog.RecordCaptureError(e,execution.Enabled);
+            SetUnknown(e.Message);
+        }
+    }
+    private void UpdateLiveRows(Captured next, bool live, string reason, bool render = true)
+    {
+        if (layout is null) return;
+        lastUnknownReason = "";
+        bool radiant=layout.SpecId==70&&RetBuffs.IsRadiant(layout,next.At);
+        if(layout.SpecId==70&&render) retPoints.SetRadiant(radiant);
+        for (int index = 0; index < fields.Length; index++)
+        {
+            var field = fields[index]; var row = grid.Rows[index];
+            if(render&&layout.SpecId==70&&field.Id=="105") SetCell(row,1,RetBuffs.Label("ret_wings",radiant));
+            bool unused=radiant&&FuryBuffs.SpecialKey(layout,field)=="ret_sentence";
+            if(render&&row.Visible==unused) {
+                if(unused&&grid.CurrentCell?.OwningRow==row) grid.CurrentCell=null;
+                row.Visible=!unused;
+            }
+            if(unused) continue;
+            SamplePoint? point = FuryBuffs.Point(layout, field);
+            if (point is null) {
+                if (!render) continue;
+                SetCell(row,2,"未设置"); SetCell(row,4,"—");
+                SetCell(row,5,layout.SpecId is 70 or 71 or 72?"未知 · 特殊点未配置/停用":"未启用（手动校准）");
+                if(row.Cells[3].Style.BackColor != Color.White) row.Cells[3].Style.BackColor = Color.White;
+                continue;
+            }
+            var color = next.At(point);
+            string rgb = Colors.Rgb(color), value = live ? layout.SpecId == RotationForever.ForeverPaladin.ProfileId ? RotationForever.ForeverPaladin.Decode(field, color) : layout.SpecId == 70 ? RetBuffs.Decode(layout,field,color,radiant) : layout.SpecId == 65 ? HolyBuffs.Decode(layout,field,color) : layout.SpecId == 71 ? ArmsBuffs.Decode(layout, field, color,next.At) : FuryBuffs.Decode(layout, field, color,next.At) : $"未知 · {reason}";
+            string coordinates = $"{point.X}, {point.Y}";
+            string signature = $"{rgb}|{value}";
+            bool hadValue = lastValues.TryGetValue(field.Id, out var old);
+            string logKey=$"field:{layout.SpecId}:{field.Id}";
+            if(!hadValue) logStates.Changed(logKey,value);
+            if (hadValue && old != signature)
+            {
+                changedTimes[field.Id] = DateTime.Now.ToString("HH:mm:ss.fff");
+                // Undefined slots still show their current RGB; log meaningful fields only.
+                if (field.Kind != ValueKind.Raw || FuryBuffs.SpecialKey(layout, field) is not null)
+                    AddLog($"[{field.Id}] {field.Name}: {old} → {signature}",logKey,value);
+            }
+            lastValues[field.Id] = signature;
+            if (!render) continue;
+            SetCell(row,2,coordinates);
+            if(row.Cells[3].Style.BackColor != color) row.Cells[3].Style.BackColor = color;
+            SetCell(row,4,rgb); SetCell(row,5,value);
+            var background = live && field.Kind == ValueKind.Boolean && color.R == 255 ? Color.FromArgb(232, 246, 239) : Color.White;
+            if(row.DefaultCellStyle.BackColor != background) row.DefaultCellStyle.BackColor = background;
+            SetCell(row,6,changedTimes.GetValueOrDefault(field.Id, "—"));
+        }
+    }
+    private static void SetCell(DataGridViewRow row, int column, string value)
+    {
+        if (!Equals(row.Cells[column].Value, value)) row.Cells[column].Value = value;
+    }
+    internal void ProfilePresentation(DiagnosticLayout example, Bitmap image)
+    {
+        layout = example;
+        ReplaceCapture(new Captured((Bitmap)image.Clone(), new Rectangle(Point.Empty, image.Size)));
+        UpdateLiveRows(captured!, true, "");
+    }
+    internal void ProfileLogChurn(int lines, bool reset = false, bool flush = true)
+    {
+        _ = changes.Handle;
+        if (reset) ClearCurrentLog();
+        for (int i = 0; i < lines; i++)
+            AddLog($"[17] 雷霆一击冷却: 128, 128, 128|编码 50.2%；旧规则未就绪 → 129, 129, 129|编码 50.6%；旧规则未就绪 · 测试 {i}");
+        if (flush) FlushLogDisplay();
+    }
+    private void ReplaceCapture(Captured next, DiagnosticLayout? displayed = null)
+    {
+        var old = captured; captured = next; capturedAt = DateTime.Now;
+        capturedLayout = (displayed ?? layout)?.Copy();
+        preview.Source = next; preview.SamplingLayout = capturedLayout;
+        preview.AutoScrollMinSize = new Size(next.Image.Width * 2, Math.Max(90, next.Image.Height * 8 + 28));
+        preview.Invalidate(); old?.Dispose();
+    }
+    private void SetUnknown(string reason)
+    {
+        holyShieldLog.RecordUnavailable(reason,execution.Enabled);
+        ResetPartyRoster(reason);
+        executionStatus.Text = execution.Enabled ? "执行等待有效采样" : "执行已关闭";
+        if (inFloatingMode) { SetStatus(reason); return; }
+        if (lastUnknownReason == reason) return;
+        lastUnknownReason = reason;
+        foreach (DataGridViewRow row in grid.Rows)
+        {
+            row.Cells[4].Value = "—"; row.Cells[5].Value = "未知（无有效采样）";
+            row.Cells[3].Style.BackColor = Color.White; row.DefaultCellStyle.BackColor = Color.White;
+        }
+        lastValues.Clear(); SetStatus(captured is null ? reason : reason + $" · 保留上次画面 {capturedAt:HH:mm:ss.fff}");
+    }
+    private void ResetPartyRoster(string reason="资料已清除，等待脱战刷新")
+    {
+        partyRoster.Reset(reason);
+        partyPower.Reset();partyPanel.Clear(reason);
+        HOLY.Inst.SetPartyRoster(null);
+        HOLY.Inst.Reset();
+        healingFrames.Clear();
+        if(activeProfile?.SpecId==65||healingDiagnostics.Observed) RecordHealingDiagnostics(new());
+        if(partyDiagnostics.Observed) RecordPartyDiagnostics(null,null,_=>Color.Black,null,reason,"资料已清除：取消血DK降权");
+    }
+    private void RecordPartyDiagnostics(PartyRosterSnapshot? roster,PartyRunicPower? power,Func<int,Color> frame,
+        bool? combat,string rosterStatus,string powerStatus)
+    {
+        var changes=partyDiagnostics.Observe(roster,power,frame,combat,execution.Enabled,layout?.HolyThresholds??new(),rosterStatus,powerStatus);
+        foreach(var change in changes) AddLog(change.Message,"party:"+change.Key);
+        // The automatic file retains all transitions even after the 1000-line
+        // window rolls over. Execution and visible panel are not prerequisites.
+        holyShieldLog.RecordPartyChanges(changes);
+    }
+    private void RecordHealingDiagnostics(HolyBuffs buffs)
+    {
+        var changes=healingDiagnostics.Observe(HOLY.Inst.HealingSample,healingFrames,buffs,layout?.HolyThresholds??new(),execution.Enabled);
+        var context=healingFrames.TryGetValue(41,out var mode)&&FuryBuffs.Boolean(mode)==true?
+            HOLY.Inst.Raid.CooldownContext:HOLY.Inst.CooldownContext;
+        changes.AddRange(masteryDiagnostics.Observe(context,healingFrames,layout?.HolyThresholds??new(),execution.Enabled));
+        changes.AddRange(HOLY.Inst.Sacrifice.DrainChanges());
+        foreach(var change in changes) AddLog(change.Message,change.Key);
+        holyShieldLog.RecordPartyChanges(changes);
+    }
+    private void SetStatus(string text, bool record = true)
+    {
+        status.Text = text;
+        // Silent recovery must permit the same later failure to be logged again.
+        if(!record) logStates.Changed(nameof(SetStatus),text);
+        if (record && previousStatus != text) AddLog(text);
+        previousStatus = text;
+    }
+    private void AddLog(string message,string? key=null,string? state=null,
+        [System.Runtime.CompilerServices.CallerMemberName] string source="")
+    {
+        if(!logStates.Changed(key??source,state??message)) return;
+        string line = $"{DateTime.Now:HH:mm:ss.fff} {message}";
+        // Recording/export is immediate. Native list updates belong to presentation,
+        // never to the sampling/execution path (including while the window is hidden).
+        log.Enqueue(line); pendingLogDisplay.Enqueue(line);
+        while (log.Count > 1000) log.Dequeue();
+        while (pendingLogDisplay.Count > 1000) pendingLogDisplay.Dequeue();
+    }
+    internal void FlushLogDisplay()
+    {
+        if (pendingLogDisplay.Count == 0) return;
+        changes.BeginUpdate();
+        try {
+            int width = changes.HorizontalExtent;
+            if (pendingLogDisplay.Count == 1000) changes.Items.Clear();
+            else while (changes.Items.Count + pendingLogDisplay.Count > 1000) changes.Items.RemoveAt(0);
+            var lines = pendingLogDisplay.ToArray();
+            foreach (string line in lines) width = Math.Max(width, MeasureLogWidth(line));
+            changes.Items.AddRange(lines);
+            changes.HorizontalExtent = width;
+            changes.TopIndex = Math.Max(0, changes.Items.Count - 1);
+            pendingLogDisplay.Clear();
+        }
+        finally { changes.EndUpdate(); }
+    }
+    private int MeasureLogWidth(string line) => TextRenderer.MeasureText(line, changes.Font, Size.Empty,
+        TextFormatFlags.SingleLine | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width + 12;
+    private void UpdateLogWidth()
+    {
+        int width = 1;
+        foreach (string line in log) width = Math.Max(width, MeasureLogWidth(line));
+        changes.HorizontalExtent = width;
+    }
+    private void ClearCurrentLog()
+    {
+        log.Clear(); pendingLogDisplay.Clear(); changes.Items.Clear();
+        changes.HorizontalExtent = 1;
+        status.Text = "窗口日志已清空。继续采样后会记录新的变化。";
+    }
+    private void ClearSavedLogs()
+    {
+        modalOperation = true;
+        bool wasFrozen = frozen; frozen = true;
+        StopExecution("用户清空日志");
+        try
+        {
+            var result = savedLogs.ClearContents();
+            ClearCurrentLog();
+            string message = result.Cleared == 0 && result.Errors.Length == 0
+                ? "没有已保存日志需要清空。窗口日志已清空。"
+                : $"已清空 {result.Cleared} 个已保存日志的内容。窗口日志已清空。";
+            if (result.Errors.Length > 0) message += $"；{result.Errors.Length} 个失败：" + string.Join("；", result.Errors);
+            SetStatus(message);
+            FlushLogDisplay();
+        }
+        catch (Exception e) { SetStatus("清空日志失败：" + e.Message); }
+        finally { modalOperation = false; frozen = wasFrozen; if (!frozen) heartbeat.Reset(); }
+    }
+    private void Export()
+    {
+        modalOperation = true;
+        bool wasFrozen = frozen;
+        frozen = true;
+        StopExecution("用户保存截图与日志");
+        try
+        {
+            if (captured is null || capturedLayout is null) throw new InvalidOperationException("还没有采样画面。");
+            Directory.CreateDirectory(exportDirectory);
+            using var dialog = new SaveFileDialog { Filter = "原始采样 PNG|*.png", InitialDirectory = exportDirectory, FileName = $"points-{capturedAt:yyyyMMdd-HHmmss-fff}.png" };
+            if (dialog.ShowDialog(this) != DialogResult.OK) return;
+            string path = Path.ChangeExtension(dialog.FileName, null);
+            exportDirectory = Path.GetDirectoryName(Path.GetFullPath(dialog.FileName))!;
+            ExportSnapshot(path);
+            AddLog("已保存截图、字段 CSV、日志及布局：" + path);
+        }
+        catch (Exception e) { SetStatus(e.Message); }
+        finally { modalOperation = false; frozen = wasFrozen; if (!frozen) heartbeat.Reset(); }
+    }
+    internal void ExportSnapshot(string path)
+    {
+        if (captured is null || capturedLayout is null) throw new InvalidOperationException("还没有采样画面。");
+        captured.Image.Save(path + ".png", ImageFormat.Png);
+        static string Quote(object? value) => "\"" + (value?.ToString() ?? "").Replace("\"", "\"\"") + "\"";
+        var csv = new StringBuilder(); csv.AppendLine(string.Join(",", grid.Columns.Cast<DataGridViewColumn>().Where(c => c.Index != 3).Select(c => Quote(c.HeaderText))));
+        foreach (DataGridViewRow row in grid.Rows) csv.AppendLine(string.Join(",", row.Cells.Cast<DataGridViewCell>().Where(c => c.ColumnIndex != 3).Select(c => Quote(c.Value))));
+        File.WriteAllText(path + ".csv", csv.ToString(), new UTF8Encoding(true));
+        string details = capturedLayout.SpecId == RotationForever.ForeverPaladin.ProfileId
+            ? $"永恒采集日志：{(holyShieldLog.Started ? holyShieldLog.Path : "尚未创建")}\n最后采样建议：" +
+                RotationForever.ForeverPaladin.Decide(id => captured.At(capturedLayout.Frames[id - 1])).Reason +
+                "\n键位：7 正义圣印，8 审判，F11 神圣打击\n"
+            : $"完整神圣自动日志：{(holyShieldLog.Started?holyShieldLog.Path:"尚未创建")}\n完整惩戒自动日志：{(retCombatLog.Started?retCombatLog.Path:"尚未创建")}\n小队当前诊断快照：\n{partyDiagnostics.Snapshot}\n治疗窗口快照：\n{healingDiagnostics.Snapshot}\n牺牲联动：{HOLY.Inst.Sacrifice.Status}\n";
+        File.WriteAllText(path + ".log.txt", $"最后画面时间：{capturedAt:O}\n状态：{status.Text}\n截图客户区范围：{captured.Bounds}\n" +
+            details + "窗口变化记录：\n" +
+            string.Join(Environment.NewLine, log), Encoding.UTF8);
+        savedLogs.Remember(path + ".log.txt");
+        capturedLayout.Save(path + ".layout.json");
+    }
+    internal void ShowSynthetic(DiagnosticLayout example, Bitmap image)
+    {
+        SelectClass(ClassProfiles.Identify(image.GetPixel(example.Markers[1].X, example.Markers[1].Y)), example, force: true);
+        ApplyControls(); ReplaceCapture(new((Bitmap)image.Clone(), new Rectangle(Point.Empty, image.Size)));
+        for (int i = 0; i < fields.Length; i++)
+        {
+            var field = fields[i]; var point = FuryBuffs.Point(layout!, field);
+            if (point is null) continue;
+            var color = image.GetPixel(point.X, point.Y); var row = grid.Rows[i];
+            row.Cells[2].Value = $"{point.X}, {point.Y}"; row.Cells[3].Style.BackColor = color; row.Cells[4].Value = Colors.Rgb(color); row.Cells[5].Value = layout!.SpecId == RotationForever.ForeverPaladin.ProfileId ? RotationForever.ForeverPaladin.Decode(field, color) : layout.SpecId == 70 ? RetBuffs.Decode(layout,field,color) : layout.SpecId == 65 ? HolyBuffs.Decode(layout,field,color) : layout.SpecId == 71 ? ArmsBuffs.Decode(layout, field, color,p=>image.GetPixel(p.X,p.Y)) : FuryBuffs.Decode(layout, field, color,p=>image.GetPixel(p.X,p.Y));
+        }
+        SetStatus("合成画面，仅供窗口布局检查 · 当前专精字段与原始 RGB");
+        if (activeProfile?.SpecId == 65) AddLog("神圣三点：按Buff有无参考色解码；当前为合成画面。");
+        else if (activeProfile?.SpecId == 71) AddLog("武器七点：按用户参考色解码；当前为合成画面。");
+        else if (activeProfile?.SpecId == 72) AddLog("[101] 激怒：存在 · 临近结束 · 固定点；鲁莽=成功施法计时；雷霆配置=" + layout!.ThunderMode);
+        else if (activeProfile?.SpecId == RotationForever.ForeverPaladin.ProfileId)
+        {
+            AddLog("永恒圣骑士 · 正义圣印30秒计时 · 审判统一10码 · 7/8/F11");
+            executionStatus.Text = "诊断（执行关闭）：" +
+                RotationForever.ForeverPaladin.Decide(id => image.GetPixel(example.Frames[id - 1].X, example.Frames[id - 1].Y)).Reason;
+        }
+        else { AddLog("[21] 建议：盾牌猛击：否 → 是"); AddLog("[7] 怒气比例：45.1% → 62.7%"); }
+        FlushLogDisplay();
+    }
+    internal void FreezeForTesting() { StopExecution(); timer.Stop(); frozen = true; }
+    internal void ShowSyntheticPosition(DiagnosticLayout example, Bitmap image)
+    {
+        SelectClass(ClassProfiles.Identify(image.GetPixel(example.Markers[1].X, example.Markers[1].Y)), example, force: true);
+        layout = example; BeginLocator("合成定位测试"); frozen = true;
+        using var scan = new Captured((Bitmap)image.Clone(), new Rectangle(Point.Empty, image.Size));
+        ShowPositionChecks(example, scan, PositionVerification.Check(example, scan.At));
+        SetStatus("合成定位画面 · 校验通过 203/203 · 专门用于检查点位位置");
+    }
+}
+
+internal sealed class PixelPreview : ScrollableControl
+{
+    internal Captured? Source;
+    internal DiagnosticLayout? SamplingLayout;
+    internal int Selected = -1;
+    internal bool LocationMode;
+    internal Field[]? LiveFields;
+    // Only the viewport owns a double buffer. The scrollable image may be thousands
+    // of pixels tall when a special point is near the bottom of the game window.
+    public PixelPreview() { DoubleBuffered = true; AutoScroll = true; Size = new Size(1000, 90); }
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e); var source = Source; var layout = SamplingLayout;
+        if (source is null || layout is null) { e.Graphics.DrawString("校准后显示像素放大图，黄色标记对应表格选中行。", Font, Brushes.DimGray, 8, 15); return; }
+        e.Graphics.TranslateTransform(AutoScrollPosition.X, AutoScrollPosition.Y);
+        e.Graphics.InterpolationMode = InterpolationMode.NearestNeighbor; e.Graphics.PixelOffsetMode = PixelOffsetMode.Half;
+        e.Graphics.DrawImage(source.Image, new Rectangle(0, 24, source.Image.Width * 2, source.Image.Height * 8), 0, 0, source.Image.Width, source.Image.Height, GraphicsUnit.Pixel);
+        using var small = new Font(Font.FontFamily, 7);
+        for (int i = 0; i < layout.Frames.Length; i++)
+        {
+            if (layout.Frames.Length > 50 && i != 0 && (i + 1) % 5 != 0) continue;
+            var p = layout.Frames[i]; int x = (p.X - source.Bounds.X) * 2;
+            e.Graphics.DrawString((i + 1).ToString(), small, Brushes.Black, x - 7, 3);
+        }
+        for (int i = 0; i < 3; i++) e.Graphics.DrawString($"M{i + 1}", small, Brushes.Black, (layout.Markers[i].X - source.Bounds.X) * 2 - 7, 3);
+        int count = layout.Frames.Length;
+        SamplePoint? selected = LocationMode
+            ? Selected >= 0 && Selected < count ? layout.Frames[Selected]
+                : Selected >= count && Selected < count * 2 ? layout.Bars[Selected - count]
+                : Selected >= count * 2 && Selected < count * 2 + 3 ? layout.Markers[Selected - count * 2] : null
+            : LiveFields is { } fields && Selected >= 0 && Selected < fields.Length ? FuryBuffs.Point(layout, fields[Selected]) : null;
+        if (selected is not null)
+        {
+            int x = (selected.X - source.Bounds.X) * 2, y = 24 + (selected.Y - source.Bounds.Y) * 8;
+            using var pen = new Pen(Color.Gold, 2); e.Graphics.DrawRectangle(pen, x - 4, y - 2, 9, 11);
+        }
+    }
+}

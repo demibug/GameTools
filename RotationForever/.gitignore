@@ -1,0 +1,53 @@
+# Build outputs and local IDE state
+[Bb]in/
+[Oo]bj/
+[Pp]ublish/
+artifacts/
+dist/
+releases/
+TestResults/
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.pubxml.user
+
+# Temporary builds created for local verification
+/.build/
+
+# Runtime exports, screenshots, and logs
+/captures/
+*.log
+*.log.txt
+*.dmp
+
+# Machine-specific calibration and exported-log history
+/diagnostic-layout.json
+/profiles/
+/saved-log-files.json
+/saved-log-files.json.tmp
+/floating-window.json
+/floating-window.json.tmp
+/points-*.png
+/points-*.csv
+/points-*.layout.json
+
+# Release archives created beside the source
+/RotationForever*.zip
+/RotationForever*.7z
+
+# Helper caches, temporary files and OS metadata
+__pycache__/
+*.pyc
+*.pyo
+*.tmp
+*.bak
+*.swp
+*.swo
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Keep source, project files, documentation, and diagnostic scripts tracked.
