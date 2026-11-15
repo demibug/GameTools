@@ -34,6 +34,7 @@ internal sealed class DiagnosticForm : Form
     private Rectangle samplingBounds;
     private string lastUnknownReason = "";
     private string lastHolyExecutionReason = "";
+    private readonly RotationForever.PaladinTrace foreverTrace = new();
     private readonly Queue<string> pendingLogDisplay = new();
     private readonly System.Windows.Forms.Timer logDisplayTimer = new() { Interval = 250 };
     private readonly CheckBox specialEnabled = new() { Text = "启用特殊点 101", AutoSize = true };
@@ -431,7 +432,7 @@ internal sealed class DiagnosticForm : Form
         thunderMode.SelectedIndex = layout.ThunderMode == "exact-stacks" ? 1 : 0;
         holyRaidMastery.Checked=layout.HolyThresholds.RaidAutoAuraMastery;
         specialColor.Text = activeProfile?.SpecId == RotationForever.ForeverPaladin.ProfileId
-            ? "7 正义圣印 · 8 审判 · F11 神圣打击；观察点仅用于诊断。"
+            ? "7 审判 · 8 神圣打击 · Shift+1 正义圣印 · Shift+2 十字军圣印（手动）"
             : !special ? "当前专精不使用特殊点。" : activeProfile?.SpecId == 581
             ? $"复仇特殊点：沿用非黑判断；取色 RGB：{layout.SpecialReferenceColor?.ToString() ?? "未采集"}。"
             : $"无视苦痛：纯黑或等于取色 RGB 时需要施放；取色 RGB：{layout.SpecialReferenceColor?.ToString() ?? "未采集（只判断纯黑）"}。";
@@ -695,7 +696,13 @@ internal sealed class DiagnosticForm : Form
             run.Text = "关闭执行（中键）"; executionStatus.Text = "执行等待有效职业数据 / 心跳";
             AddLog($"执行已开启：{activeProfile.DisplayName}；使用对应配置、执行代码与原键位。");
         }
-        catch (Exception e) { SetStatus("无法开启执行：" + e.Message); }
+        catch (Exception e)
+        {
+            string message = "无法开启执行（" + source + "）：" + e.Message;
+            SetStatus(message);
+            AddLog(message);
+            holyShieldLog.RecordControl(message);
+        }
     }
     private void StopExecution(string reason="界面操作", [System.Runtime.CompilerServices.CallerMemberName] string caller="")
     {
@@ -791,6 +798,23 @@ internal sealed class DiagnosticForm : Form
                 }
                 else if(holyShieldLog.Error is null && shieldLogError is not null) {
                     shieldLogError=null;AddLog("神圣诊断日志写入已恢复","trace-error");
+                }
+            }
+            if (activeProfile?.SpecId == RotationForever.ForeverPaladin.ProfileId)
+            {
+                foreverTrace.Record(id => next.At(layout.Frames[id - 1]), live, execution.Enabled,
+                    global::Program.GetForegroundWindow() == game.Handle,
+                    executionText,
+                    clock.Elapsed.TotalSeconds, holyShieldLog.RecordForever);
+                if (holyShieldLog.Started && !shieldLogAnnounced)
+                {
+                    shieldLogAnnounced = true;
+                    AddLog("永恒自动诊断日志：" + holyShieldLog.Path, "trace-path");
+                }
+                if (holyShieldLog.Error != shieldLogError)
+                {
+                    shieldLogError = holyShieldLog.Error;
+                    AddLog(shieldLogError is null ? "永恒日志写入已恢复" : "永恒日志写入失败：" + shieldLogError, "trace-error");
                 }
             }
             // Record changed execution judgments even while the table is hidden.
@@ -1085,7 +1109,7 @@ internal sealed class DiagnosticForm : Form
         string details = capturedLayout.SpecId == RotationForever.ForeverPaladin.ProfileId
             ? $"永恒采集日志：{(holyShieldLog.Started ? holyShieldLog.Path : "尚未创建")}\n最后采样建议：" +
                 RotationForever.ForeverPaladin.Decide(id => captured.At(capturedLayout.Frames[id - 1])).Reason +
-                "\n键位：7 正义圣印，8 审判，F11 神圣打击\n"
+                "\n键位：7 审判，8 神圣打击，Shift+1 正义圣印，Shift+2 十字军圣印（手动）\n"
             : $"完整神圣自动日志：{(holyShieldLog.Started?holyShieldLog.Path:"尚未创建")}\n完整惩戒自动日志：{(retCombatLog.Started?retCombatLog.Path:"尚未创建")}\n小队当前诊断快照：\n{partyDiagnostics.Snapshot}\n治疗窗口快照：\n{healingDiagnostics.Snapshot}\n牺牲联动：{HOLY.Inst.Sacrifice.Status}\n";
         File.WriteAllText(path + ".log.txt", $"最后画面时间：{capturedAt:O}\n状态：{status.Text}\n截图客户区范围：{captured.Bounds}\n" +
             details + "窗口变化记录：\n" +
@@ -1110,7 +1134,7 @@ internal sealed class DiagnosticForm : Form
         else if (activeProfile?.SpecId == 72) AddLog("[101] 激怒：存在 · 临近结束 · 固定点；鲁莽=成功施法计时；雷霆配置=" + layout!.ThunderMode);
         else if (activeProfile?.SpecId == RotationForever.ForeverPaladin.ProfileId)
         {
-            AddLog("永恒圣骑士 · 正义圣印30秒计时 · 审判统一10码 · 7/8/F11");
+            AddLog("永恒圣骑士 · 圣印共用30秒计时 · 审判统一10码 · 7 审判 / 8 神圣打击 / Shift+1 正义圣印 / Shift+2 十字军圣印（手动）");
             executionStatus.Text = "诊断（执行关闭）：" +
                 RotationForever.ForeverPaladin.Decide(id => image.GetPixel(example.Frames[id - 1].X, example.Frames[id - 1].Y)).Reason;
         }

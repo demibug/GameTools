@@ -16,10 +16,38 @@ internal static class PaladinTests
             if (!value) throw new Exception("Forever: " + name);
             checks++;
         }
+        foreach (var (action, key, shift) in new[]
+        {
+            (PaladinAction.Seal, (ushort)0x31, true),
+            (PaladinAction.CrusaderSeal, (ushort)0x32, true),
+            (PaladinAction.Judgement, (ushort)0x37, false),
+            (PaladinAction.HolyStrike, (ushort)0x38, false)
+        })
+        {
+            GameKeys.KeyStroke[] expected = shift
+                ? [new(0xA0, false), new(key, false), new(key, true), new(0xA0, true)]
+                : [new(key, false), new(key, true)];
+            var calls = new List<GameKeys.KeyStroke[]>();
+            Check(GameKeys.Press(action, strokes => { calls.Add(strokes); return (uint)strokes.Length; }) &&
+                calls.Count == 1 && calls[0].SequenceEqual(expected), "key binding and complete chord " + action);
+            for (uint accepted = 0; accepted < expected.Length; accepted++)
+            {
+                calls.Clear();
+                var held = new HashSet<ushort>();
+                Check(!GameKeys.Press(action, strokes =>
+                {
+                    uint count = calls.Count == 0 ? accepted : (uint)strokes.Length;
+                    calls.Add(strokes);
+                    foreach (var stroke in strokes.Take((int)count))
+                        if (stroke.Up) held.Remove(stroke.Key); else held.Add(stroke.Key);
+                    return count;
+                }) && held.Count == 0, $"partial send releases keys {action}/{accepted}");
+            }
+        }
         var frames = Enumerable.Range(1, 100).ToDictionary(id => id, _ => Color.Black);
         var bars = new Dictionary<int, Color>();
         void Flag(int id, bool value = true) => frames[id] = value ? Color.White : Color.Black;
-        foreach (int id in new[] { 1, 2, 3, 4, 6, 7, 8, 50 }) Flag(id);
+        foreach (int id in new[] { 1, 2, 3, 4, 6, 7, 8, 16, 17, 18, 26, 27, 28, 50 }) Flag(id);
         PaladinDecision Decide() => ForeverPaladin.Decide(id => frames[id]);
         Check(Decide().Action == PaladinAction.Seal, "seal before attacks");
         Flag(5);
@@ -40,6 +68,12 @@ internal static class PaladinTests
         frames[7] = Color.Orange;
         Check(Decide().Action == PaladinAction.None, "unknown readiness");
         Flag(7);
+        Flag(27, false); Flag(28, false);
+        Check(Decide().Action == PaladinAction.None, "resource flags block otherwise ready attacks");
+        Flag(27); Flag(28);
+        Flag(17, false); Flag(18, false);
+        Check(Decide().Action == PaladinAction.None, "usability flags block otherwise ready attacks");
+        Flag(17); Flag(18);
         Check(ForeverPaladin.Decode(ForeverPaladin.Fields()[8], Color.White) == "30.0 秒", "timer decoding");
         Check(ClassProfiles.Find(ForeverPaladin.ProfileId) == ClassProfiles.Forever, "profile registration");
         var identity = new ClassIdentity(ForeverPaladin.ProfileId, 2);
@@ -108,6 +142,61 @@ internal static class PaladinTests
         execution.Stop();
         execution.Tick(game, layout, captured, true, 2, ClassProfiles.Forever);
         Check(dispatched == 1, "disabled execution");
+        checks += TraceTests();
+        return checks;
+    }
+
+    private static int TraceTests()
+    {
+        int checks = 0;
+        void Check(bool value, string name)
+        {
+            if (!value) throw new Exception("Forever trace: " + name);
+            checks++;
+        }
+        var frames = Enumerable.Range(1, 100).ToDictionary(id => id, _ => Color.Black);
+        foreach (int id in new[] { 1, 2, 3, 4, 6, 7, 8, 10, 11, 12, 26, 27, 28, 50 }) frames[id] = Color.White;
+        var trace = new PaladinTrace();
+        var lines = new List<string>();
+        bool Write(string line) { lines.Add(line); return true; }
+        void Record(double now, bool live = true, bool enabled = false) =>
+            trace.Record(id => frames[id], live, enabled, true, "执行已关闭", now, Write);
+        Record(0);
+        Check(lines.Count == 1 && lines[0].Contains("正义圣印可用[16]=否 RGB(0,0,0)") &&
+            lines[0].Contains("已学习正义圣印[10]=是") && lines[0].Contains("执行关闭"), "disabled capture includes exact seal blockers");
+        Record(.1);
+        frames[9] = Color.FromArgb(200, 200, 200);
+        Record(.2);
+        Check(lines.Count == 1, "unchanged state and countdown do not flood logs");
+        Record(5);
+        Check(lines.Count == 2, "persistent blocker written every five seconds");
+        frames[16] = Color.White;
+        Record(5.01, enabled: true);
+        Check(lines.Count == 3 && lines[^1].Contains("圣印条件=已满足"), "usability transition recorded immediately");
+        frames[26] = Color.Orange;
+        Record(5.02, enabled: true);
+        Check(lines[^1].Contains("正义圣印资源充足[26]=未知 RGB(255,165,0)"), "invalid color is unknown");
+        Record(5.03, live: false);
+        Check(lines[^1].Contains("采样无效，不推断技能状态") && !lines[^1].Contains("圣印条件=已满足"), "invalid sample never asserts readiness");
+        var retry = new PaladinTrace();
+        int attempts = 0;
+        bool Failed(string line) { attempts++; return false; }
+        retry.Record(id => frames[id], true, false, true, "关闭", 0, Failed);
+        retry.Record(id => frames[id], true, false, true, "关闭", .1, Failed);
+        Check(attempts == 2, "failed writes remain retryable");
+        string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "forever-trace-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var log = new HolyShieldLog(new SavedLogStore(directory), "forever-capture");
+            Check(log.RecordForever(lines[0]) && log.RecordForever(lines[0]), "real file accepts recurring snapshots");
+            string content = System.IO.File.ReadAllText(log.Path);
+            Check(content.StartsWith("永恒自动诊断") && content.Split("[永恒战斗诊断]").Length == 3,
+                "correct header and snapshots persisted");
+        }
+        finally
+        {
+            if (System.IO.Directory.Exists(directory)) System.IO.Directory.Delete(directory, true);
+        }
         return checks;
     }
 
@@ -118,7 +207,7 @@ internal static class PaladinTests
         graphics.Clear(Color.Black);
         for (int id = 1; id <= 100; id++)
         {
-            Color color = id is >= 1 and <= 12 or 50 ? Color.White : Color.Black;
+            Color color = id is >= 1 and <= 12 or >= 16 and <= 18 or >= 26 and <= 28 or 50 ? Color.White : Color.Black;
             if (id == 9) color = Color.FromArgb(153, 153, 153);
             if (id is 14 or 15) color = Color.FromArgb(204, 204, 204);
             if (id == 51) color = Color.FromArgb(204, 255, 0);
@@ -155,7 +244,7 @@ internal static class PaladinTests
         var controls = All(form).ToArray();
         var grid = controls.OfType<DataGridView>().Single(g => g.Name == "pointGrid");
         if (grid.Rows.Count != 101 || grid.Rows[8].Cells[5].Value?.ToString() != "18.0 秒" ||
-            !grid.Rows[5].Cells[1].Value!.ToString()!.Contains("7"))
+            !grid.Rows[5].Cells[1].Value!.ToString()!.Contains("Shift+1"))
             throw new Exception("Forever fields or timer display failed");
         foreach (string name in new[] { "定位测试", "暂停查看", "截图取点 / 取色", "清空窗口日志", "清空已保存日志" })
             if (!controls.OfType<Button>().Any(button => button.Text == name && button.Visible))

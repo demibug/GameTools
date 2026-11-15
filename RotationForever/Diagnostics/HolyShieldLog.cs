@@ -74,6 +74,8 @@ internal sealed class HolyShieldLog
         if(Write(new[]{"[执行控制] "+message})) lastControl=message;
     }
 
+    internal bool RecordForever(string message) => Write(new[] { message });
+
     internal void RecordCaptureError(Exception error,bool executing)
     {
         string message=$"采集／执行异常；激活保留={executing}；{error}";
@@ -100,7 +102,9 @@ internal sealed class HolyShieldLog
         if(lines.Length==0 && pendingPartyLines.Count==0) return true;
         try {
             Directory.CreateDirectory(store.DefaultDirectory);
-            string header=Started?"":"神圣自动诊断（执行控制及关闭来源／法力与低血量关键状态／治疗石和药水条件、使用请求及客户端反馈／圣光术采集／队伍与治疗策略）；仅状态变化写入；按键请求不代表成功，超时不等于失败；通用客户端提示未确认物品归属。"+Environment.NewLine;
+            string header=Started?"":(System.IO.Path.GetFileName(Path).StartsWith("forever-",StringComparison.Ordinal)
+                ? "永恒自动诊断：采集、执行开关、圣印条件及原始RGB；状态变化和每5秒持续状态自动记录；已发送按键不代表施法成功。"
+                : "神圣自动诊断（执行控制及关闭来源／法力与低血量关键状态／治疗石和药水条件、使用请求及客户端反馈／圣光术采集／队伍与治疗策略）；仅状态变化写入；按键请求不代表成功，超时不等于失败；通用客户端提示未确认物品归属。")+Environment.NewLine;
             string timestamp=DateTimeOffset.Now.ToString("O");
             File.AppendAllText(Path,header+string.Join(Environment.NewLine,pendingPartyLines.Concat(lines.Select(line=>timestamp+" "+line)))+Environment.NewLine,new UTF8Encoding(false));
             pendingPartyLines.Clear();

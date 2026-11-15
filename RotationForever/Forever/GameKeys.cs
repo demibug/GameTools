@@ -5,6 +5,7 @@ namespace RotationForever;
 
 internal static class GameKeys
 {
+    internal readonly record struct KeyStroke(ushort Key, bool Up);
     private const uint InputKeyboard = 1;
     private const uint KeyUp = 2;
 
@@ -42,20 +43,41 @@ internal static class GameKeys
     [DllImport("user32.dll")]
     private static extern uint SendInput(uint count, Input[] inputs, int size);
 
-    internal static bool Press(PaladinAction action)
+    internal static KeyStroke[] Sequence(PaladinAction action)
     {
-        ushort key = action switch
+        (ushort key, bool shift) = action switch
         {
-            PaladinAction.Seal => 0x37,      // 7
-            PaladinAction.Judgement => 0x38, // 8
-            PaladinAction.HolyStrike => 0x7A, // F11
+            PaladinAction.Seal => ((ushort)0x31, true),         // Shift+1
+            PaladinAction.CrusaderSeal => ((ushort)0x32, true), // Shift+2
+            PaladinAction.Judgement => ((ushort)0x37, false),   // 7
+            PaladinAction.HolyStrike => ((ushort)0x38, false),  // 8
             _ => throw new ArgumentOutOfRangeException(nameof(action))
         };
-        Input[] inputs = [Keyboard(key, 0), Keyboard(key, KeyUp)];
-        int size = Marshal.SizeOf<Input>();
-        uint sent = SendInput((uint)inputs.Length, inputs, size);
-        if (sent == 1) SendInput(1, [inputs[1]], size);
-        return sent == inputs.Length;
+        return shift
+            ? [new(0xA0, false), new(key, false), new(key, true), new(0xA0, true)]
+            : [new(key, false), new(key, true)];
+    }
+
+    internal static bool Press(PaladinAction action) => Press(action, Send);
+
+    internal static bool Press(PaladinAction action, Func<KeyStroke[], uint> send)
+    {
+        var sequence = Sequence(action);
+        uint sent = send(sequence);
+        if (sent == sequence.Length) return true;
+        // Release only keys pressed by the accepted prefix, in reverse order.
+        // A partially accepted chord must not leave our Shift held down.
+        var held = new List<ushort>();
+        foreach (var stroke in sequence.Take((int)sent))
+            if (stroke.Up) held.Remove(stroke.Key); else held.Add(stroke.Key);
+        if (held.Count > 0) send(held.AsEnumerable().Reverse().Select(key => new KeyStroke(key, true)).ToArray());
+        return false;
+    }
+
+    private static uint Send(KeyStroke[] sequence)
+    {
+        var inputs = sequence.Select(stroke => Keyboard(stroke.Key, stroke.Up ? KeyUp : 0)).ToArray();
+        return SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<Input>());
     }
 
     private static Input Keyboard(ushort key, uint flags) =>
